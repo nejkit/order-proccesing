@@ -90,3 +90,34 @@ func (om *OrderManager) GetOrderById(ctx context.Context, id string) *OrderInfo 
 	}
 	return nil
 }
+
+func (om *OrderManager) GetOrderByWallet(ctx context.Context, wallet string) []*OrderInfo {
+	pattern := "*:*:*:*:*:" + wallet + ":*"
+	result, err := om.redisCli.GetByPattern(ctx, pattern)
+	if err != nil {
+		om.logger.Errorln("Search failed! message: ", err.Error())
+		return nil
+	}
+	if result != nil {
+		var dataModels []*OrderInfo
+		for _, order := range result {
+			var dataModel OrderInfo
+			err = json.Unmarshal([]byte(order), dataModel)
+			if err != nil {
+				om.logger.Errorln("Err parse the value from redis! message", err.Error())
+				continue
+			}
+			dataModels = append(dataModels, &dataModel)
+		}
+		return dataModels
+	}
+	return nil
+}
+
+func (om *OrderManager) DeleteOrderById(ctx context.Context, id string) {
+	pattern := "*:*:*:*:*:*:" + id
+	err := om.redisCli.DeleteByPattern(ctx, pattern)
+	if err != nil {
+		om.logger.Errorln("Err delete data! message: ", err.Error())
+	}
+}

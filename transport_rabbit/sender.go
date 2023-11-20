@@ -16,8 +16,8 @@ type AmqpSender struct {
 	rk      string
 }
 
-func (s *AmqpSender) SendMessage(ctx context.Context, message *protoreflect.ProtoMessage) {
-	body, err := proto.Marshal(*message)
+func (s *AmqpSender) SendMessage(ctx context.Context, message protoreflect.ProtoMessage) {
+	body, err := proto.Marshal(message)
 	if err != nil {
 		s.logger.Errorln("Parsing message error, error: ", err.Error())
 	}

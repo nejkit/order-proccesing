@@ -32,3 +32,11 @@ func (cli *RedisClient) Insert(ctx context.Context, key string, value []byte) er
 func (cli *RedisClient) GetByPattern(ctx context.Context, pattern string) ([]string, error) {
 	return cli.client.Keys(ctx, pattern).Result()
 }
+
+func (cli *RedisClient) DeleteByPattern(ctx context.Context, pattern string) error {
+	state := cli.client.Del(ctx, pattern)
+	if state.Err() != nil {
+		return state.Err()
+	}
+	return nil
+}
