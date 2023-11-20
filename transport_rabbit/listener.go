@@ -21,7 +21,7 @@ type Listener[T any] struct {
 	messageId GetMessageId[T]
 }
 
-func NewListener[T any](ctx context.Context, factory AmqpFactory, gName string, parser ParserFunc[T], handler HandlerFunc[T]) *Listener[T] {
+func NewListener[T any](ctx context.Context, factory AmqpFactory, gName string, parser ParserFunc[T], handler HandlerFunc[T], idfunc GetMessageId[T]) *Listener[T] {
 	rmqChannel, err := factory.getRmqChannel()
 	if err != nil {
 		return nil

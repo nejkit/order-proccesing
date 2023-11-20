@@ -39,8 +39,8 @@ type OrderManager struct {
 	logger   *logrus.Logger
 }
 
-func NewOrderManager(connectionString string, logger *logrus.Logger) OrderManager {
-	redisCli := GetNewRedisCli(logger, connectionString)
+func NewOrderManager(address string, logger *logrus.Logger) OrderManager {
+	redisCli := GetNewRedisCli(logger, address)
 	return OrderManager{redisCli: redisCli, logger: logger}
 }
 

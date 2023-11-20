@@ -2,6 +2,7 @@ package transportrabbit
 
 import (
 	"context"
+	"order-processing/statics"
 	"time"
 
 	"github.com/rabbitmq/amqp091-go"
@@ -25,6 +26,18 @@ func NewFactory(logger *logrus.Logger, connectionString string) AmqpFactory {
 		break
 	}
 	return AmqpFactory{logger: logger, connection: con}
+}
+
+func (f *AmqpFactory) InitRmq() {
+	ch, _ := f.getRmqChannel()
+	defer ch.Close()
+
+	ch.ExchangeDeclare(statics.ExNameOrders, "topic", true, false, false, false, nil)
+	ch.QueueDeclare(statics.QueueNameCreateOrderRequest, true, false, false, false, nil)
+	ch.QueueDeclare(statics.QueueNameCreateOrderResponse, true, false, false, false, nil)
+	ch.QueueBind(statics.QueueNameCreateOrderRequest, statics.RkCreateOrderRequest, statics.ExNameOrders, false, nil)
+	ch.QueueBind(statics.QueueNameCreateOrderResponse, statics.RkCreateOrderResponse, statics.ExNameOrders, false, nil)
+
 }
 
 func (f *AmqpFactory) getRmqChannel() (*amqp091.Channel, error) {

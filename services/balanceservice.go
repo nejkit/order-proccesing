@@ -49,7 +49,7 @@ func (s *BalanceService) LockBalance(ctx context.Context, request *orders.Create
 		Currency: request.GetSellCurency(),
 		Amount:   amount,
 	}
-	s.lockSender.SendMessage(ctx, event.ProtoReflect().Interface())
+	s.lockSender.SendMessage(ctx, event)
 	response := s.lockListener.ConsumeById(ctx, id)
 	if response.GetState() == balances.LockBalanceStatus_DONE {
 		return nil

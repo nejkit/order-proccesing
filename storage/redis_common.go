@@ -12,9 +12,9 @@ type RedisClient struct {
 	client redisLib.Client
 }
 
-func GetNewRedisCli(logger *logrus.Logger, connectionString string) RedisClient {
+func GetNewRedisCli(logger *logrus.Logger, address string) RedisClient {
 	client := redisLib.NewClient(&redisLib.Options{
-		Addr:     connectionString,
+		Addr:     address,
 		Password: "",
 		DB:       0,
 	})
