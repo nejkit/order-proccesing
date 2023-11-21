@@ -21,5 +21,6 @@ func NewOrderApi(logger *logrus.Logger, oserv services.OrderService, sender tran
 
 func (api *OrderApi) CreateOrder(ctx context.Context, request *orders.CreateOrderRequest) {
 	response := api.ordersServ.CreateOrder(ctx, request)
+	api.logger.Infoln("Send response: ", response.String())
 	api.rmqpSender.SendMessage(ctx, response)
 }

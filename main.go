@@ -24,7 +24,8 @@ func main() {
 	ctxRoot := context.Background()
 	ctx, cancel := context.WithCancel(ctxRoot)
 	rmqFactory := transportrabbit.NewFactory(logger, "amqp://admin:admin@rabbitmq:5672")
-	redisCli := storage.NewOrderManager("@redis:6379", logger)
+	rmqFactory.InitRmq()
+	redisCli := storage.NewOrderManager("redis:6379", logger)
 	lockSender, err := rmqFactory.NewSender(ctx, statics.ExNameBalances, statics.RkLockBalanceRequest)
 	orderSender, err := rmqFactory.NewSender(ctx, statics.ExNameOrders, statics.RkCreateOrderResponse)
 	if err != nil {

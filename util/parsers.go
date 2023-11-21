@@ -1,6 +1,7 @@
 package util
 
 import (
+	"fmt"
 	"order-processing/external/balances"
 	"order-processing/external/orders"
 
@@ -14,6 +15,7 @@ func GetParserForLockBalanceResponse() func([]byte) (*balances.LockBalanceRespon
 		if err != nil {
 			return nil, err
 		}
+		fmt.Println("Received response: ", request.String())
 		return &request, nil
 	}
 }

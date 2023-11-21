@@ -54,7 +54,9 @@ func genKeyByOrderData(orderData OrderInfo) string {
 		fmt.Sprintf("%v", orderData.InitVolume),
 		orderData.ExchangeWallet,
 		orderData.Id}
-	return strings.Join(keyData[:], ":")
+	key := strings.Join(keyData[:], ":")
+	fmt.Println(key)
+	return key
 }
 
 func (om *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) {
@@ -69,7 +71,7 @@ func (om *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) {
 	err = om.redisCli.Insert(ctx, key, value)
 	if err != nil {
 		om.logger.Errorln("Insert failed! message: ", err.Error())
-	}
+	} 
 }
 
 func (om *OrderManager) GetOrderById(ctx context.Context, id string) *OrderInfo {

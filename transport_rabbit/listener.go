@@ -32,11 +32,12 @@ func NewListener[T any](ctx context.Context, factory AmqpFactory, gName string, 
 		return nil
 	}
 	return &Listener[T]{
-		channel:  rmqChannel,
-		logger:   factory.logger,
-		messages: messages,
-		parser:   parser,
-		handler:  handler,
+		channel:   rmqChannel,
+		logger:    factory.logger,
+		messages:  messages,
+		parser:    parser,
+		handler:   handler,
+		messageId: idfunc,
 	}
 }
 
@@ -71,9 +72,12 @@ func (l *Listener[T]) ConsumeById(ctx context.Context, id string) *T {
 				msg.Nack(false, false)
 				continue
 			}
-			if l.messageId(body) == id {
-				msg.Ack(false)
-				return body
+			if body != nil {
+				l.logger.Infoln("ID event: ", l.messageId(body))
+				if l.messageId(body) == id {
+					msg.Ack(false)
+					return body
+				}
 			}
 			select {
 			case <-time.After(time.Minute * 1):
