@@ -28,7 +28,8 @@ func (s *OrderService) CreateOrder(ctx context.Context, request *orders.CreateOr
 	if lockResponse != nil {
 		s.logger.Warningln("Balance not locked. Reazon: ", lockResponse.Error())
 		return &orders.CreateOrderResponse{
-			Id: request.GetId(),
+			Id:           request.GetId(),
+			ErrorMessage: lockResponse.Error(),
 		}
 	}
 	oid := uuid.NewString()
