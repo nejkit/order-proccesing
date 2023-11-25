@@ -3,10 +3,23 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
-	"github.com/sirupsen/logrus"
+	logger "github.com/sirupsen/logrus"
+)
+
+var (
+	OrdersHash              = "orders"
+	OrdersPrice             = "orders:price"
+	OrdersCreation          = "orders:creation"
+	OrdersCurrencySets      = "orders:currency:"
+	OrdersDirectionSets     = "orders:direction:"
+	OrdersMatchingCandidate = "orders:match:"
+	MatchingCandidates      = "orders:candidates:"
 )
 
 type MatchingData struct {
@@ -18,8 +31,7 @@ type MatchingData struct {
 type OrderInfo struct {
 	Id string
 
-	SellCurrency   string
-	BuyCurrency    string
+	CurrencyPair   string
 	Direction      int
 	InitPrice      float64
 	MatchInfo      []MatchingData
@@ -36,19 +48,19 @@ type OrderInfo struct {
 
 type OrderManager struct {
 	redisCli RedisClient
-	logger   *logrus.Logger
+	mtx      sync.Mutex
 }
 
-func NewOrderManager(address string, logger *logrus.Logger) OrderManager {
-	redisCli := GetNewRedisCli(logger, address)
-	return OrderManager{redisCli: redisCli, logger: logger}
+func NewOrderManager(address string) OrderManager {
+	redisCli := GetNewRedisCli(address)
+	return OrderManager{redisCli: redisCli, mtx: sync.Mutex{}}
 }
 
-func genKeyByOrderData(orderData OrderInfo) string {
+func buildKeyByOrderData(orderData OrderInfo) string {
 	//sell cur, buycur, price, creat_date, volume, ex address, id order
 	keyData := [7]string{
-		orderData.SellCurrency,
-		orderData.BuyCurrency,
+		orderData.CurrencyPair,
+		fmt.Sprintf("%d", orderData.Direction),
 		fmt.Sprintf("%v", orderData.InitPrice),
 		fmt.Sprintf("%d", orderData.CreationDate),
 		fmt.Sprintf("%v", orderData.InitVolume),
@@ -59,67 +71,80 @@ func genKeyByOrderData(orderData OrderInfo) string {
 	return key
 }
 
-func (om *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) {
-	key := genKeyByOrderData(request)
+func (o *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) error {
 	value, err := json.Marshal(request)
-
 	if err != nil {
-		om.logger.Errorln("Error encode to JSON! message: ", err.Error())
-		return
+		return errors.New("Internal")
 	}
-
-	err = om.redisCli.Insert(ctx, key, value)
+	err = o.redisCli.InsertHash(ctx, OrdersHash, request.Id, value)
 	if err != nil {
-		om.logger.Errorln("Insert failed! message: ", err.Error())
-	} 
+		return err
+	}
+	err = o.redisCli.InsertZadd(ctx, OrdersPrice, request.Id, request.InitPrice)
+	if err != nil {
+		return err
+	}
+	err = o.redisCli.InsertZadd(ctx, OrdersCreation, request.Id, float64(request.CreationDate))
+	if err != nil {
+		return err
+	}
+	err = o.redisCli.InsertSet(ctx, OrdersCurrencySets+request.CurrencyPair, request.Id)
+	if err != nil {
+		return err
+	}
+	go o.MatchOrderById(ctx, request.Id)
+	return nil
 }
 
-func (om *OrderManager) GetOrderById(ctx context.Context, id string) *OrderInfo {
-	pattern := "*:*:*:*:*:*:" + id
-	result, err := om.redisCli.GetByPattern(ctx, pattern)
+func (o *OrderManager) GetOrderById(ctx context.Context, id string) (*OrderInfo, error) {
+	result, err := o.redisCli.GetFromHash(ctx, OrdersHash, id)
 	if err != nil {
-		om.logger.Errorln("Search failed! message: ", err.Error())
-		return nil
+		return nil, err
 	}
 	if result != nil {
 		var dataModel OrderInfo
-		err = json.Unmarshal([]byte(result[0]), dataModel)
+		err = json.Unmarshal([]byte(*result), dataModel)
 		if err != nil {
-			om.logger.Errorln("Err parse the value from redis! message: ", err.Error())
-			return nil
+			logger.Errorln("Err parse the value from redis! message: ", err.Error())
+			return nil, err
 		}
-		return &dataModel
+		return &dataModel, nil
 	}
+	return nil, err
+}
+
+func (o *OrderManager) DeleteOrderById(ctx context.Context, id string) error {
+	o.mtx.Lock()
+	defer o.mtx.Unlock()
+	orderInfo, err := o.redisCli.GetFromHash(ctx, OrdersHash, id)
+	if err != nil {
+		return err
+	}
+	var orderModel OrderInfo
+	err = json.Unmarshal([]byte(*orderInfo), orderModel)
+	o.redisCli.DeleteFromHash(ctx, OrdersHash, id)
+	o.redisCli.DeleteFromZAdd(ctx, OrdersPrice, id)
+	o.redisCli.DeleteFromZAdd(ctx, OrdersPrice, id)
+	o.redisCli.DeleteFromSet(ctx, OrdersCurrencySets+orderModel.CurrencyPair, id)
 	return nil
 }
 
-func (om *OrderManager) GetOrderByWallet(ctx context.Context, wallet string) []*OrderInfo {
-	pattern := "*:*:*:*:*:" + wallet + ":*"
-	result, err := om.redisCli.GetByPattern(ctx, pattern)
+func (o *OrderManager) MatchOrderById(ctx context.Context, id string) error {
+	o.mtx.Lock()
+	defer o.mtx.Unlock()
+	info, err := o.redisCli.GetFromHash(ctx, OrdersHash, id)
+	var orderInfo OrderInfo
+	err = json.Unmarshal([]byte(*info), &orderInfo)
 	if err != nil {
-		om.logger.Errorln("Search failed! message: ", err.Error())
-		return nil
+		return err
 	}
-	if result != nil {
-		var dataModels []*OrderInfo
-		for _, order := range result {
-			var dataModel OrderInfo
-			err = json.Unmarshal([]byte(order), dataModel)
-			if err != nil {
-				om.logger.Errorln("Err parse the value from redis! message", err.Error())
-				continue
-			}
-			dataModels = append(dataModels, &dataModel)
-		}
-		return dataModels
-	}
+	candidatesSet := o.redisCli.ZInterStorage(ctx, ZInterOptions{
+		prefix:  MatchingCandidates,
+		keys:    []string{OrdersPrice, OrdersCreation, OrdersCurrencySets + orderInfo.CurrencyPair, OrdersDirectionSets + fmt.Sprintf("%d", orderInfo.Direction)},
+		weights: []float64{float64(time.Now().Unix() * 100), 1, 0, 0},
+	}, id)
+	defer o.redisCli.client.Del(ctx, candidatesSet)
+	matchOrderIds, err := o.redisCli.ZRange(ctx, candidatesSet, -1)
+	logger.Infoln("Candidates for matching: ", strings.Join(matchOrderIds, ", "))
 	return nil
-}
-
-func (om *OrderManager) DeleteOrderById(ctx context.Context, id string) {
-	pattern := "*:*:*:*:*:*:" + id
-	err := om.redisCli.DeleteByPattern(ctx, pattern)
-	if err != nil {
-		om.logger.Errorln("Err delete data! message: ", err.Error())
-	}
 }
