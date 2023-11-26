@@ -3,10 +3,28 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"order-processing/external/orders"
 	"strings"
+	"sync"
+	"time"
 
-	"github.com/sirupsen/logrus"
+	logger "github.com/sirupsen/logrus"
+)
+
+var (
+	OrdersHash              = "orders"
+	OrdersPrice             = "orders:price"
+	OrdersCreation          = "orders:creation"
+	OrdersCurrencySets      = "orders:currency:"
+	OrdersDirectionSets     = "orders:direction:"
+	OrdersMatchingCandidate = "orders:match:"
+	MatchingCandidates      = "orders:candidates:"
+	OrderPriceSortDirection = map[int]int{
+		int(orders.Direction_DIRECTION_TYPE_BUY.Number()):  1,
+		int(orders.Direction_DIRECTION_TYPE_SELL.Number()): -1,
+	}
 )
 
 type MatchingData struct {
@@ -18,8 +36,7 @@ type MatchingData struct {
 type OrderInfo struct {
 	Id string
 
-	SellCurrency   string
-	BuyCurrency    string
+	CurrencyPair   string
 	Direction      int
 	InitPrice      float64
 	MatchInfo      []MatchingData
@@ -36,57 +53,128 @@ type OrderInfo struct {
 
 type OrderManager struct {
 	redisCli RedisClient
-	logger   *logrus.Logger
+	mtx      sync.Mutex
 }
 
-func NewOrderManager(connectionString string, logger *logrus.Logger) OrderManager {
-	redisCli := GetNewRedisCli(logger, connectionString)
-	return OrderManager{redisCli: redisCli, logger: logger}
+func NewOrderManager(address string) OrderManager {
+	redisCli := GetNewRedisCli(address)
+	return OrderManager{redisCli: redisCli, mtx: sync.Mutex{}}
 }
 
-func genKeyByOrderData(orderData OrderInfo) string {
+func buildKeyByOrderData(orderData OrderInfo) string {
 	//sell cur, buycur, price, creat_date, volume, ex address, id order
 	keyData := [7]string{
-		orderData.SellCurrency,
-		orderData.BuyCurrency,
+		orderData.CurrencyPair,
+		fmt.Sprintf("%d", orderData.Direction),
 		fmt.Sprintf("%v", orderData.InitPrice),
 		fmt.Sprintf("%d", orderData.CreationDate),
 		fmt.Sprintf("%v", orderData.InitVolume),
 		orderData.ExchangeWallet,
 		orderData.Id}
-	return strings.Join(keyData[:], ":")
+	key := strings.Join(keyData[:], ":")
+	fmt.Println(key)
+	return key
 }
 
-func (om *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) {
-	key := genKeyByOrderData(request)
+func (o *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) error {
 	value, err := json.Marshal(request)
-
 	if err != nil {
-		om.logger.Errorln("Error encode to JSON! message: ", err.Error())
-		return
+		return errors.New("Internal")
 	}
-
-	err = om.redisCli.Insert(ctx, key, value)
+	err = o.redisCli.InsertHash(ctx, OrdersHash, request.Id, value)
 	if err != nil {
-		om.logger.Errorln("Insert failed! message: ", err.Error())
+		return err
 	}
+	err = o.redisCli.InsertZadd(ctx, OrdersPrice, request.Id, request.InitPrice)
+	if err != nil {
+		return err
+	}
+	err = o.redisCli.InsertZadd(ctx, OrdersCreation, request.Id, float64(request.CreationDate))
+	if err != nil {
+		return err
+	}
+	err = o.redisCli.InsertSet(ctx, OrdersCurrencySets+request.CurrencyPair, request.Id)
+	if err != nil {
+		return err
+	}
+	if orders.Direction(request.Direction) == orders.Direction_DIRECTION_TYPE_BUY {
+		err = o.redisCli.InsertSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_SELL.Number()), request.Id)
+	} else {
+		err = o.redisCli.InsertSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_BUY.Number()), request.Id)
+	}
+	if err != nil {
+		return err
+	}
+	go o.MatchOrderById(ctx, request.Id)
+	return nil
 }
 
-func (om *OrderManager) GetOrderById(ctx context.Context, id string) *OrderInfo {
-	pattern := "*:*:*:*:*:*:" + id
-	result, err := om.redisCli.GetByPattern(ctx, pattern)
+func (o *OrderManager) GetOrderById(ctx context.Context, id string) (*OrderInfo, error) {
+	result, err := o.redisCli.GetFromHash(ctx, OrdersHash, id)
 	if err != nil {
-		om.logger.Errorln("Search failed! message: ", err.Error())
-		return nil
+		return nil, err
 	}
 	if result != nil {
 		var dataModel OrderInfo
-		err = json.Unmarshal([]byte(result[0]), dataModel)
+		err = json.Unmarshal([]byte(*result), dataModel)
 		if err != nil {
-			om.logger.Errorln("Err parse the value from redis! message: ", err.Error())
-			return nil
+			logger.Errorln("Err parse the value from redis! message: ", err.Error())
+			return nil, err
 		}
-		return &dataModel
+		return &dataModel, nil
 	}
+	return nil, err
+}
+
+func (o *OrderManager) DeleteOrderById(ctx context.Context, id string) error {
+	o.mtx.Lock()
+	defer o.mtx.Unlock()
+	orderInfo, err := o.redisCli.GetFromHash(ctx, OrdersHash, id)
+	if err != nil {
+		return err
+	}
+	var orderModel OrderInfo
+	err = json.Unmarshal([]byte(*orderInfo), orderModel)
+	o.redisCli.DeleteFromHash(ctx, OrdersHash, id)
+	o.redisCli.DeleteFromZAdd(ctx, OrdersPrice, id)
+	o.redisCli.DeleteFromZAdd(ctx, OrdersPrice, id)
+	o.redisCli.DeleteFromSet(ctx, OrdersCurrencySets+orderModel.CurrencyPair, id)
 	return nil
+}
+
+func (o *OrderManager) MatchOrderById(ctx context.Context, id string) error {
+	o.mtx.Lock()
+	defer o.mtx.Unlock()
+	info, err := o.redisCli.GetFromHash(ctx, OrdersHash, id)
+	var orderInfo OrderInfo
+	err = json.Unmarshal([]byte(*info), &orderInfo)
+	if err != nil {
+		return err
+	}
+	priceFilter, err := o.getPriceFilterForLimitOrderByInfo(ctx, orderInfo)
+	if err != nil {
+		return err
+	}
+	candidatesSet := o.redisCli.ZInterStorage(ctx, ZInterOptions{
+		prefix:  MatchingCandidates,
+		keys:    []string{*priceFilter, OrdersCreation, OrdersCurrencySets + orderInfo.CurrencyPair, OrdersDirectionSets + fmt.Sprintf("%d", orderInfo.Direction)},
+		weights: []float64{float64(time.Now().Unix() * 100), 1, 0, 0},
+	}, id)
+	defer o.redisCli.client.Del(ctx, candidatesSet)
+	matchOrderIds, err := o.redisCli.ZRange(ctx, candidatesSet, -1)
+	logger.Infoln("Candidates for matching: ", strings.Join(matchOrderIds, ", "))
+	return nil
+}
+
+func (o *OrderManager) getPriceFilterForLimitOrderByInfo(ctx context.Context, oInfo OrderInfo) (*string, error) {
+	if orders.Direction_DIRECTION_TYPE_BUY == orders.Direction(oInfo.Direction) {
+		return o.redisCli.PrepareIndexWithLimitOption(ctx, LimitOptions{
+			maxPrice: oInfo.InitPrice,
+			minPrice: 0,
+		})
+	}
+	return o.redisCli.PrepareIndexWithLimitOption(ctx, LimitOptions{
+		maxPrice: 0,
+		minPrice: oInfo.InitPrice,
+	})
 }
