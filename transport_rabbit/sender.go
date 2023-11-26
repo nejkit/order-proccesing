@@ -23,6 +23,8 @@ func (s *AmqpSender) SendMessage(ctx context.Context, message protoreflect.Proto
 	err = s.channel.PublishWithContext(ctx, s.ex, s.rk, false, false, amqp091.Publishing{ContentType: "text/plain", Body: body})
 	if err != nil {
 		logger.Errorln("Message not publish. Reazon: ", err.Error())
+		return
 	}
+	logger.Info("Message was succesfully published! ")
 
 }

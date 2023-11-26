@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"order-processing/external/orders"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,10 @@ var (
 	OrdersDirectionSets     = "orders:direction:"
 	OrdersMatchingCandidate = "orders:match:"
 	MatchingCandidates      = "orders:candidates:"
+	OrderPriceSortDirection = map[int]int{
+		int(orders.Direction_DIRECTION_TYPE_BUY.Number()):  1,
+		int(orders.Direction_DIRECTION_TYPE_SELL.Number()): -1,
+	}
 )
 
 type MatchingData struct {
@@ -92,6 +97,14 @@ func (o *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) er
 	if err != nil {
 		return err
 	}
+	if orders.Direction(request.Direction) == orders.Direction_DIRECTION_TYPE_BUY {
+		err = o.redisCli.InsertSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_SELL.Number()), request.Id)
+	} else {
+		err = o.redisCli.InsertSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_BUY.Number()), request.Id)
+	}
+	if err != nil {
+		return err
+	}
 	go o.MatchOrderById(ctx, request.Id)
 	return nil
 }
@@ -138,13 +151,30 @@ func (o *OrderManager) MatchOrderById(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	priceFilter, err := o.getPriceFilterForLimitOrderByInfo(ctx, orderInfo)
+	if err != nil {
+		return err
+	}
 	candidatesSet := o.redisCli.ZInterStorage(ctx, ZInterOptions{
 		prefix:  MatchingCandidates,
-		keys:    []string{OrdersPrice, OrdersCreation, OrdersCurrencySets + orderInfo.CurrencyPair, OrdersDirectionSets + fmt.Sprintf("%d", orderInfo.Direction)},
+		keys:    []string{*priceFilter, OrdersCreation, OrdersCurrencySets + orderInfo.CurrencyPair, OrdersDirectionSets + fmt.Sprintf("%d", orderInfo.Direction)},
 		weights: []float64{float64(time.Now().Unix() * 100), 1, 0, 0},
 	}, id)
 	defer o.redisCli.client.Del(ctx, candidatesSet)
 	matchOrderIds, err := o.redisCli.ZRange(ctx, candidatesSet, -1)
 	logger.Infoln("Candidates for matching: ", strings.Join(matchOrderIds, ", "))
 	return nil
+}
+
+func (o *OrderManager) getPriceFilterForLimitOrderByInfo(ctx context.Context, oInfo OrderInfo) (*string, error) {
+	if orders.Direction_DIRECTION_TYPE_BUY == orders.Direction(oInfo.Direction) {
+		return o.redisCli.PrepareIndexWithLimitOption(ctx, LimitOptions{
+			maxPrice: oInfo.InitPrice,
+			minPrice: 0,
+		})
+	}
+	return o.redisCli.PrepareIndexWithLimitOption(ctx, LimitOptions{
+		maxPrice: 0,
+		minPrice: oInfo.InitPrice,
+	})
 }

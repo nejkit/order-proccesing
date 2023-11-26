@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	redisLib "github.com/redis/go-redis/v9"
 )
@@ -11,6 +12,11 @@ type ZInterOptions struct {
 	prefix  string
 	keys    []string
 	weights []float64
+}
+
+type LimitOptions struct {
+	minPrice float64 ``
+	maxPrice float64
 }
 
 type RedisClient struct {
@@ -43,7 +49,7 @@ func (c *RedisClient) InsertZadd(ctx context.Context, setName string, key string
 }
 
 func (c *RedisClient) InsertSet(ctx context.Context, setName string, value string) error {
-	state := c.client.Set(ctx, setName, value, -1)
+	state := c.client.SAdd(ctx, setName, value, -1)
 	if state.Err() != nil {
 		return errors.New("Internal")
 	}
@@ -94,4 +100,16 @@ func (c *RedisClient) ZRange(ctx context.Context, setName string, limit int64) (
 		return nil, errors.New("Internal")
 	}
 	return ids, nil
+}
+
+func (c *RedisClient) PrepareIndexWithLimitOption(ctx context.Context, options LimitOptions) (*string, error) {
+	indexName := "orders:limit_price:" + fmt.Sprintf("%f", options.minPrice) + fmt.Sprintf("%f", options.maxPrice)
+	c.client.ZInterStore(ctx, indexName, &redisLib.ZStore{
+		Keys: []string{OrdersPrice},
+	})
+	c.client.ZRemRangeByScore(ctx, indexName, "-inf", fmt.Sprintf("%f", options.minPrice))
+	if options.maxPrice > 0 {
+		c.client.ZRemRangeByScore(ctx, indexName, fmt.Sprintf("%f", options.maxPrice), "+inf")
+	}
+	return &indexName, nil
 }

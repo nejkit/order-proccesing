@@ -22,14 +22,17 @@ func NewOrderApi(oserv services.OrderService, senders map[int]transportrabbit.Am
 
 func (api *OrderApi) CreateOrder(ctx context.Context, request *orders.CreateOrderRequest) {
 	oid, err := api.ordersServ.CreateOrder(ctx, request)
-	if err != nil {
-		//add middleware
-	}
 	sender, ok := api.senders[statics.CreateOrderSender]
 	if !ok {
 		logger.Errorln("Sender not initialized! ")
 		panic("Not init sender")
 	}
+	if err != nil {
+		//add middlewareS
+		sender.SendMessage(ctx, &orders.CreateOrderResponse{Id: request.GetId(), ErrorMessage: err.Error()})
+		return
+	}
+
 	sender.SendMessage(ctx, &orders.CreateOrderResponse{Id: request.GetId(), OrderId: *oid})
 }
 
