@@ -9,4 +9,5 @@ const (
 	RkLockBalanceRequest         = "r.order-processing.request.LockBalanceRequest.#"
 	RkCreateOrderRequest         = "r.request.#.CreateOrderRequest.#"
 	RkCreateOrderResponse        = "r.response.#.CreateOrderResponse.#"
+	RkGetOrderResponse           = "r.response.#.GetOrderResponse.#"
 )

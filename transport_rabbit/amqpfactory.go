@@ -48,7 +48,10 @@ func (f *AmqpFactory) getRmqChannel() (*amqp091.Channel, error) {
 	return ch, nil
 }
 
-func (f *AmqpFactory) NewSender(ctx context.Context, ex string, rk string) *AmqpSender {
-	ch, _ := f.getRmqChannel()
-	return &AmqpSender{channel: ch, ex: ex, rk: rk}
+func (f *AmqpFactory) NewSender(ctx context.Context, ex string, rk string) (*AmqpSender, error) {
+	ch, err := f.getRmqChannel()
+	if err != nil {
+		return nil, err
+	}
+	return &AmqpSender{channel: ch, ex: ex, rk: rk}, nil
 }

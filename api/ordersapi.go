@@ -4,7 +4,6 @@ import (
 	"context"
 	"order-processing/external/orders"
 	"order-processing/services"
-	"order-processing/statics"
 	"order-processing/storage"
 	transportrabbit "order-processing/transport_rabbit"
 
@@ -12,51 +11,42 @@ import (
 )
 
 type OrderApi struct {
-	ordersServ services.OrderService
-	senders    map[int]transportrabbit.AmqpSender
+	ordersServ        services.OrderService
+	createOrderSender transportrabbit.AmqpSender
+	getOrderSender    transportrabbit.AmqpSender
 }
 
-func NewOrderApi(oserv services.OrderService, senders map[int]transportrabbit.AmqpSender) OrderApi {
-	return OrderApi{ordersServ: oserv, senders: senders}
+func NewOrderApi(oserv services.OrderService, cos transportrabbit.AmqpSender, gos transportrabbit.AmqpSender) OrderApi {
+	return OrderApi{ordersServ: oserv, createOrderSender: cos, getOrderSender: gos}
 }
 
 func (api *OrderApi) CreateOrder(ctx context.Context, request *orders.CreateOrderRequest) {
 	oid, err := api.ordersServ.CreateOrder(ctx, request)
-	sender, ok := api.senders[statics.CreateOrderSender]
-	if !ok {
-		logger.Errorln("Sender not initialized! ")
-		panic("Not init sender")
-	}
 	if err != nil {
-		//add middlewareS
-		sender.SendMessage(ctx, &orders.CreateOrderResponse{Id: request.GetId(), ErrorMessage: err.Error()})
+		api.createOrderSender.SendMessage(ctx, &orders.CreateOrderResponse{Id: request.GetId(), ErrorMessage: err.Error()})
 		return
 	}
 
-	sender.SendMessage(ctx, &orders.CreateOrderResponse{Id: request.GetId(), OrderId: *oid})
+	api.createOrderSender.SendMessage(ctx, &orders.CreateOrderResponse{Id: request.GetId(), OrderId: *oid})
 }
 
 func (api *OrderApi) GetOrder(ctx context.Context, request *orders.GetOrderRequest) {
 	data, err := api.ordersServ.GetOrder(ctx, request)
-	sender, ok := api.senders[statics.GetOrderSender]
-	if !ok {
-		logger.Errorln("Sender not initialized! ")
-		panic("Not init sender")
-	}
+
 	if err != nil {
 		response := orders.GetOrderResponse{
 			Id:        request.GetId(),
-			OrderData: convertGetOrderResponse(data),
+			OrderData: nil,
 		}
-		sender.SendMessage(ctx, &response)
+		api.getOrderSender.SendMessage(ctx, &response)
 	}
 	response := orders.GetOrderResponse{
 		Id:        request.GetId(),
-		OrderData: nil,
+		OrderData: convertGetOrderResponse(data),
 	}
 	logger.Infoln("Send response: ", response.String())
 
-	sender.SendMessage(ctx, &response)
+	api.getOrderSender.SendMessage(ctx, &response)
 }
 
 func convertGetOrderResponse(data []storage.OrderInfo) []*orders.OrderInfo {

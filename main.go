@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	logger "github.com/sirupsen/logrus"
 )
@@ -25,9 +26,20 @@ func main() {
 	rmqFactory := transportrabbit.NewFactory("amqp://admin:admin@rabbitmq:5672")
 	rmqFactory.InitRmq()
 	redisCli := storage.NewOrderManager("redis:6379")
-	lockSender := rmqFactory.NewSender(ctx, statics.ExNameBalances, statics.RkLockBalanceRequest)
-	senders := map[int]transportrabbit.AmqpSender{
-		statics.CreateOrderSender: *rmqFactory.NewSender(ctx, statics.ExNameOrders, statics.RkCreateOrderResponse),
+	lockSender, err := rmqFactory.NewSender(ctx, statics.ExNameBalances, statics.RkLockBalanceRequest)
+	if err != nil {
+		cancel()
+		return
+	}
+	createOrderSender, err := rmqFactory.NewSender(ctx, statics.ExNameOrders, statics.RkCreateOrderResponse)
+	if err != nil {
+		cancel()
+		return
+	}
+	getOrderSender, err := rmqFactory.NewSender(ctx, statics.ExNameOrders, statics.RkGetOrderResponse)
+	if err != nil {
+		cancel()
+		return
 	}
 	lockStorage := transportrabbit.NewAmqpStorage[balances.LockBalanceResponse](util.GetIdFromLockBalanceResponse())
 	lockProcessor := transportrabbit.NewAmqpProcessor[balances.LockBalanceResponse](util.GetHandlerForLockBalanceProcessor(lockStorage), util.GetParserForLockBalanceResponse())
@@ -41,7 +53,7 @@ func main() {
 
 	balanceService := services.NewBalanceService(*lockSender, lockStorage)
 	orderService := services.NewMarketOrderService(&redisCli, balanceService)
-	api := api.NewOrderApi(orderService, senders)
+	api := api.NewOrderApi(orderService, *createOrderSender, *getOrderSender)
 	handler := handlers.NewHandler(api)
 
 	createOrderProcessor := transportrabbit.NewAmqpProcessor[orders.CreateOrderRequest](handler.GetHandlerForCreateOrder(), util.GetParserForCreateOrderRequest())
@@ -59,7 +71,10 @@ func main() {
 		case <-exit:
 			{
 				cancel()
+				return
 			}
+		default:
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
