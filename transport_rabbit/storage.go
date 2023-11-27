@@ -2,6 +2,7 @@ package transportrabbit
 
 import (
 	"errors"
+	"order-processing/statics"
 	"time"
 
 	logger "github.com/sirupsen/logrus"
@@ -34,5 +35,5 @@ func (s *AmqpStorage[T]) GetMessage(id string) (*T, error) {
 		}
 		time.Sleep(1 * time.Second)
 	}
-	return nil, errors.New("NotFound")
+	return nil, errors.New(statics.ErrorMessageNotFound)
 }

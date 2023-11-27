@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"order-processing/statics"
 
 	redisLib "github.com/redis/go-redis/v9"
 )
@@ -35,7 +36,7 @@ func GetNewRedisCli(address string) RedisClient {
 func (c *RedisClient) InsertHash(ctx context.Context, hashName string, key string, value []byte) error {
 	state := c.client.HSet(ctx, hashName, key, value)
 	if state.Err() != nil {
-		return errors.New("Internal")
+		return errors.New(statics.InternalError)
 	}
 	return nil
 }
@@ -43,7 +44,7 @@ func (c *RedisClient) InsertHash(ctx context.Context, hashName string, key strin
 func (c *RedisClient) InsertZadd(ctx context.Context, setName string, key string, weight float64) error {
 	state := c.client.ZAdd(ctx, setName, redisLib.Z{Member: key, Score: weight})
 	if state.Err() != nil {
-		return errors.New("Internal")
+		return errors.New(statics.InternalError)
 	}
 	return nil
 }
@@ -51,7 +52,7 @@ func (c *RedisClient) InsertZadd(ctx context.Context, setName string, key string
 func (c *RedisClient) InsertSet(ctx context.Context, setName string, value string) error {
 	state := c.client.SAdd(ctx, setName, value, -1)
 	if state.Err() != nil {
-		return errors.New("Internal")
+		return errors.New(statics.InternalError)
 	}
 	return nil
 }
@@ -59,10 +60,10 @@ func (c *RedisClient) InsertSet(ctx context.Context, setName string, value strin
 func (c *RedisClient) GetFromHash(ctx context.Context, hashName string, value string) (*string, error) {
 	info, err := c.client.HGet(ctx, hashName, value).Result()
 	if err == redisLib.Nil {
-		return nil, errors.New("OrderNotFound")
+		return nil, errors.New(statics.ErrorOrderNotFound)
 	}
 	if err != nil {
-		return nil, errors.New("Internal")
+		return nil, errors.New(statics.InternalError)
 	}
 	return &info, nil
 }
@@ -94,10 +95,10 @@ func (c *RedisClient) ZInterStorage(ctx context.Context, config ZInterOptions, o
 func (c *RedisClient) ZRange(ctx context.Context, setName string, limit int64) ([]string, error) {
 	ids, err := c.client.ZRange(ctx, setName, 0, limit).Result()
 	if err == redisLib.Nil {
-		return nil, errors.New("OrderNotFound")
+		return nil, errors.New(statics.ErrorOrderNotFound)
 	}
 	if err != nil {
-		return nil, errors.New("Internal")
+		return nil, errors.New(statics.InternalError)
 	}
 	return ids, nil
 }

@@ -43,13 +43,15 @@ func main() {
 	}
 	lockStorage := transportrabbit.NewAmqpStorage[balances.LockBalanceResponse](util.GetIdFromLockBalanceResponse())
 	lockProcessor := transportrabbit.NewAmqpProcessor[balances.LockBalanceResponse](util.GetHandlerForLockBalanceProcessor(lockStorage), util.GetParserForLockBalanceResponse())
-	lockListener := transportrabbit.NewListener[balances.LockBalanceResponse](
+	lockListener, err := transportrabbit.NewListener[balances.LockBalanceResponse](
 		ctx,
 		rmqFactory,
 		statics.QueueNameLockBalanceResponse,
 		lockProcessor)
-
-	go lockListener.Run(ctx)
+	if err != nil {
+		cancel()
+		return
+	}
 
 	balanceService := services.NewBalanceService(*lockSender, lockStorage)
 	orderService := services.NewMarketOrderService(&redisCli, balanceService)
@@ -57,12 +59,16 @@ func main() {
 	handler := handlers.NewHandler(api)
 
 	createOrderProcessor := transportrabbit.NewAmqpProcessor[orders.CreateOrderRequest](handler.GetHandlerForCreateOrder(), util.GetParserForCreateOrderRequest())
-	createOrderListener := transportrabbit.NewListener[orders.CreateOrderRequest](
+	createOrderListener, err := transportrabbit.NewListener[orders.CreateOrderRequest](
 		ctx,
 		rmqFactory,
 		statics.QueueNameCreateOrderRequest,
 		createOrderProcessor)
-
+	if err != nil {
+		cancel()
+		return
+	}
+	go lockListener.Run(ctx)
 	go createOrderListener.Run(ctx)
 	exit := make(chan os.Signal, 1)
 	for {

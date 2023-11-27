@@ -2,6 +2,7 @@ package transportrabbit
 
 import (
 	"context"
+	"errors"
 	"order-processing/statics"
 	"time"
 
@@ -43,7 +44,7 @@ func (f *AmqpFactory) getRmqChannel() (*amqp091.Channel, error) {
 	ch, err := f.connection.Channel()
 	if err != nil {
 		logger.Errorln("Channel doesn`t created, message: ", err.Error())
-		return nil, err
+		return nil, errors.New(statics.InternalError)
 	}
 	return ch, nil
 }
@@ -51,7 +52,7 @@ func (f *AmqpFactory) getRmqChannel() (*amqp091.Channel, error) {
 func (f *AmqpFactory) NewSender(ctx context.Context, ex string, rk string) (*AmqpSender, error) {
 	ch, err := f.getRmqChannel()
 	if err != nil {
-		return nil, err
+		return nil, errors.New(statics.InternalError)
 	}
 	return &AmqpSender{channel: ch, ex: ex, rk: rk}, nil
 }

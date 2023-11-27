@@ -5,7 +5,9 @@ import (
 	"errors"
 	"order-processing/external/balances"
 	"order-processing/external/orders"
+	"order-processing/statics"
 	transportrabbit "order-processing/transport_rabbit"
+	"order-processing/util"
 	"strings"
 
 	"github.com/google/uuid"
@@ -52,11 +54,12 @@ func (s *BalanceService) LockBalance(ctx context.Context, request *orders.Create
 	s.lockSender.SendMessage(ctx, event)
 	response, err := s.storage.GetMessage(id)
 	if err != nil {
-		return err
+		return errors.New(statics.InternalError)
 	}
 	if response.GetState() == balances.LockBalanceStatus_DONE {
 		return nil
 	}
-	return errors.New(response.GetErrorMessage())
+
+	return util.ConvertBalanceError(response.ErrorMessage.GetErrorCode())
 
 }
