@@ -53,31 +53,30 @@ func (api *OrderApi) GetOrder(ctx context.Context, request *orders.GetOrderReque
 	api.getOrderSender.SendMessage(ctx, &response)
 }
 
-func convertGetOrderResponse(data []storage.OrderInfo) []*orders.OrderInfo {
-	var protoData []*orders.OrderInfo
-	for _, orderInfo := range data {
-		var matchingInfo []*orders.MatchingData
-		for _, mData := range orderInfo.MatchInfo {
-			matchingInfo = append(matchingInfo, &orders.MatchingData{
-				FillPrice:  float32(mData.FillPrice),
-				FillVolume: float32(mData.FillVolume),
-				Date:       mData.Date,
-			})
-		}
-		protoData = append(protoData, &orders.OrderInfo{
-			Id:             orderInfo.Id,
-			CurrencyPair:   orderInfo.CurrencyPair,
-			Direction:      orders.Direction(orderInfo.Direction),
-			InitPrice:      float32(orderInfo.InitPrice),
-			InitVolume:     float32(orderInfo.InitVolume),
-			OrderType:      orders.OrderType(orderInfo.OrderType),
-			OrderState:     orders.OrderState(orderInfo.OrderState),
-			MatchInfos:     matchingInfo,
-			CreationDate:   orderInfo.CreationDate,
-			UpdatedDate:    orderInfo.UpdatedDate,
-			ExpirationDate: orderInfo.ExpirationDate,
-			ExchangeWallet: orderInfo.ExchangeWallet,
+func convertGetOrderResponse(orderInfo *storage.OrderInfo) *orders.OrderInfo {
+	var protoData *orders.OrderInfo
+
+	var matchingInfo []*orders.MatchingData
+	for _, mData := range orderInfo.MatchInfo {
+		matchingInfo = append(matchingInfo, &orders.MatchingData{
+			FillPrice:  float32(mData.FillPrice),
+			FillVolume: float32(mData.FillVolume),
+			Date:       mData.Date,
 		})
+	}
+	protoData = &orders.OrderInfo{
+		Id:             orderInfo.Id,
+		CurrencyPair:   orderInfo.CurrencyPair,
+		Direction:      orders.Direction(orderInfo.Direction),
+		InitPrice:      float32(orderInfo.InitPrice),
+		InitVolume:     float32(orderInfo.InitVolume),
+		OrderType:      orders.OrderType(orderInfo.OrderType),
+		OrderState:     orders.OrderState(orderInfo.OrderState),
+		MatchInfos:     matchingInfo,
+		CreationDate:   orderInfo.CreationDate,
+		UpdatedDate:    orderInfo.UpdatedDate,
+		ExpirationDate: orderInfo.ExpirationDate,
+		ExchangeWallet: orderInfo.ExchangeWallet,
 	}
 	return protoData
 }

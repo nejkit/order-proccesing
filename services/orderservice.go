@@ -50,8 +50,27 @@ func (s *OrderService) CreateOrder(ctx context.Context, request *orders.CreateOr
 	return &oid, nil
 }
 
-func (s *OrderService) GetOrder(ctx context.Context, request *orders.GetOrderRequest) ([]storage.OrderInfo, error) {
+// func (s *OrderService) MatchOrderById(ctx context.Context, id string) error {
+// 	listOrdersForMatching, err := s.store.GetOrderIdsForMatching(ctx, id)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	orderInfo, err := s.store.GetOrderById(ctx, id)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	fillVolume := 0
+// 	for _, id := range listOrdersForMatching {
+// 		candidateMatchingInfo, err := s.store.GetOrderById(ctx, id)
+// 		if err != nil {
+// 			continue
+// 		}
+
+// 	}
+// }
+
+func (s *OrderService) GetOrder(ctx context.Context, request *orders.GetOrderRequest) (*storage.OrderInfo, error) {
 	data, err := s.store.GetOrderById(ctx, request.GetOrderId())
-	return []storage.OrderInfo{*data}, err
+	return data, err
 
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"order-processing/external/orders"
+	"order-processing/statics"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +32,8 @@ type MatchingData struct {
 	FillVolume float64
 	FillPrice  float64
 	Date       uint64
+	State      orders.MatchState
+	TransferId string
 }
 
 type OrderInfo struct {
@@ -105,7 +108,7 @@ func (o *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) er
 	if err != nil {
 		return err
 	}
-	go o.MatchOrderById(ctx, request.Id)
+
 	return nil
 }
 
@@ -135,25 +138,33 @@ func (o *OrderManager) DeleteOrderById(ctx context.Context, id string) error {
 	}
 	var orderModel OrderInfo
 	err = json.Unmarshal([]byte(*orderInfo), orderModel)
+	if err != nil {
+		return errors.New(statics.InternalError)
+	}
 	o.redisCli.DeleteFromHash(ctx, OrdersHash, id)
 	o.redisCli.DeleteFromZAdd(ctx, OrdersPrice, id)
 	o.redisCli.DeleteFromZAdd(ctx, OrdersPrice, id)
 	o.redisCli.DeleteFromSet(ctx, OrdersCurrencySets+orderModel.CurrencyPair, id)
+	if orderModel.Direction == int(orders.Direction_DIRECTION_TYPE_BUY) {
+		o.redisCli.DeleteFromSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_SELL), id)
+		return nil
+	}
+	o.redisCli.DeleteFromSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_BUY), id)
 	return nil
 }
 
-func (o *OrderManager) MatchOrderById(ctx context.Context, id string) error {
+func (o *OrderManager) GetOrderIdsForMatching(ctx context.Context, id string) ([]string, error) {
 	o.mtx.Lock()
 	defer o.mtx.Unlock()
 	info, err := o.redisCli.GetFromHash(ctx, OrdersHash, id)
 	var orderInfo OrderInfo
 	err = json.Unmarshal([]byte(*info), &orderInfo)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	priceFilter, err := o.getPriceFilterForLimitOrderByInfo(ctx, orderInfo)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	candidatesSet := o.redisCli.ZInterStorage(ctx, ZInterOptions{
 		prefix:  MatchingCandidates,
@@ -163,7 +174,7 @@ func (o *OrderManager) MatchOrderById(ctx context.Context, id string) error {
 	defer o.redisCli.client.Del(ctx, candidatesSet)
 	matchOrderIds, err := o.redisCli.ZRange(ctx, candidatesSet, -1)
 	logger.Infoln("Candidates for matching: ", strings.Join(matchOrderIds, ", "))
-	return nil
+	return matchOrderIds, nil
 }
 
 func (o *OrderManager) getPriceFilterForLimitOrderByInfo(ctx context.Context, oInfo OrderInfo) (*string, error) {

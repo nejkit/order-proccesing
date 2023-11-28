@@ -35,6 +35,10 @@ func (f *AmqpFactory) InitRmq() {
 	ch.ExchangeDeclare(statics.ExNameOrders, "topic", true, false, false, false, nil)
 	ch.QueueDeclare(statics.QueueNameCreateOrderRequest, true, false, false, false, nil)
 	ch.QueueDeclare(statics.QueueNameCreateOrderResponse, true, false, false, false, nil)
+	ch.QueueDeclare(statics.QueueNameGetOrderRequest, true, false, false, false, nil)
+	ch.QueueDeclare(statics.QueueNameGetOrderResponse, true, false, false, false, nil)
+	ch.QueueBind(statics.QueueNameGetOrderResponse, statics.RkGetOrderResponse, statics.ExNameOrders, false, nil)
+	ch.QueueBind(statics.QueueNameGetOrderRequest, statics.RkGetOrderRequest, statics.ExNameOrders, false, nil)
 	ch.QueueBind(statics.QueueNameCreateOrderRequest, statics.RkCreateOrderRequest, statics.ExNameOrders, false, nil)
 	ch.QueueBind(statics.QueueNameCreateOrderResponse, statics.RkCreateOrderResponse, statics.ExNameOrders, false, nil)
 
