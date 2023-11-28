@@ -24,7 +24,7 @@ func NewOrderApi(oserv services.OrderService, cos transportrabbit.AmqpSender, go
 func (api *OrderApi) CreateOrder(ctx context.Context, request *orders.CreateOrderRequest) {
 	oid, err := api.ordersServ.CreateOrder(ctx, request)
 	if err != nil {
-		api.createOrderSender.SendMessage(ctx, &orders.CreateOrderResponse{Id: request.GetId(), Error: &orders.ErrorMessage{
+		api.createOrderSender.SendMessage(ctx, &orders.CreateOrderResponse{Id: request.GetId(), Error: &orders.OrderErrorMessage{
 			ErorCode: util.MapError(err),
 			Message:  err.Error(),
 		}})

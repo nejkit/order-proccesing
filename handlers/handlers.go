@@ -19,3 +19,9 @@ func (h *Handler) GetHandlerForCreateOrder() func(context.Context, *orders.Creat
 		h.createapi.CreateOrder(ctx, cor)
 	}
 }
+
+func (h *Handler) GetHandlerForGetOrder() func(context.Context, *orders.GetOrderRequest) {
+	return func(ctx context.Context, gor *orders.GetOrderRequest) {
+		h.createapi.GetOrder(ctx, gor)
+	}
+}

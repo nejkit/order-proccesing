@@ -64,21 +64,6 @@ func NewOrderManager(address string) OrderManager {
 	return OrderManager{redisCli: redisCli, mtx: sync.Mutex{}}
 }
 
-func buildKeyByOrderData(orderData OrderInfo) string {
-	//sell cur, buycur, price, creat_date, volume, ex address, id order
-	keyData := [7]string{
-		orderData.CurrencyPair,
-		fmt.Sprintf("%d", orderData.Direction),
-		fmt.Sprintf("%v", orderData.InitPrice),
-		fmt.Sprintf("%d", orderData.CreationDate),
-		fmt.Sprintf("%v", orderData.InitVolume),
-		orderData.ExchangeWallet,
-		orderData.Id}
-	key := strings.Join(keyData[:], ":")
-	fmt.Println(key)
-	return key
-}
-
 func (o *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) error {
 	value, err := json.Marshal(request)
 	if err != nil {
@@ -119,7 +104,7 @@ func (o *OrderManager) GetOrderById(ctx context.Context, id string) (*OrderInfo,
 	}
 	if result != nil {
 		var dataModel OrderInfo
-		err = json.Unmarshal([]byte(*result), dataModel)
+		err = json.Unmarshal([]byte(*result), &dataModel)
 		if err != nil {
 			logger.Errorln("Err parse the value from redis! message: ", err.Error())
 			return nil, err

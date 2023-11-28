@@ -57,7 +57,7 @@ func main() {
 	orderService := services.NewMarketOrderService(&redisCli, balanceService)
 	api := api.NewOrderApi(orderService, *createOrderSender, *getOrderSender)
 	handler := handlers.NewHandler(api)
-
+	getOrderProcessor := transportrabbit.NewAmqpProcessor[orders.GetOrderRequest](handler.GetHandlerForGetOrder(), util.GetParserForGetOrderRequest())
 	createOrderProcessor := transportrabbit.NewAmqpProcessor[orders.CreateOrderRequest](handler.GetHandlerForCreateOrder(), util.GetParserForCreateOrderRequest())
 	createOrderListener, err := transportrabbit.NewListener[orders.CreateOrderRequest](
 		ctx,
@@ -68,8 +68,19 @@ func main() {
 		cancel()
 		return
 	}
+	getOrderListener, err := transportrabbit.NewListener[orders.GetOrderRequest](
+		ctx,
+		rmqFactory,
+		statics.QueueNameGetOrderRequest,
+		getOrderProcessor)
+	if err != nil {
+		cancel()
+		return
+	}
 	go lockListener.Run(ctx)
 	go createOrderListener.Run(ctx)
+	go getOrderListener.Run(ctx)
+
 	exit := make(chan os.Signal, 1)
 	for {
 		signal.Notify(exit, os.Interrupt, syscall.SIGTERM)
