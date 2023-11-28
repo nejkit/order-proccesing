@@ -8,7 +8,6 @@ import (
 	"order-processing/statics"
 	transportrabbit "order-processing/transport_rabbit"
 	"order-processing/util"
-	"strings"
 
 	"github.com/google/uuid"
 )
@@ -44,7 +43,7 @@ func (s *BalanceService) LockBalance(ctx context.Context, request *orders.Create
 	}
 
 	id := uuid.NewString()
-	cur := strings.Split(request.GetCurrencyPair(), "/")[request.GetDirection().Number()-1]
+	cur := util.ParseCurrencyFromDirection(request.GetCurrencyPair(), int(request.GetDirection()))
 	event := &balances.LockBalanceRequest{
 		Id:       id,
 		Address:  request.GetExchangeWallet(),

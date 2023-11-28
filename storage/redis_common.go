@@ -68,8 +68,8 @@ func (c *RedisClient) GetFromHash(ctx context.Context, hashName string, value st
 	return &info, nil
 }
 
-func (c *RedisClient) GetByPattern(ctx context.Context, pattern string) ([]string, error) {
-	return c.client.Keys(ctx, pattern).Result()
+func (c *RedisClient) GetFromSet(ctx context.Context, setName string) ([]string, error) {
+	return c.client.SMembers(ctx, setName).Result()
 }
 
 func (c *RedisClient) DeleteFromHash(ctx context.Context, key string, field string) {
