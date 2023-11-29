@@ -9,3 +9,9 @@ func GetIdFromLockBalanceResponse() func(*balances.LockBalanceResponse) string {
 		return cor.GetId()
 	}
 }
+
+func GetIdFromTransferResponse() func(*balances.Transfer) string {
+	return func(t *balances.Transfer) string {
+		return t.GetId()
+	}
+}

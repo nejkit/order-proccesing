@@ -42,7 +42,7 @@ func main() {
 		return
 	}
 	lockStorage := transportrabbit.NewAmqpStorage[balances.LockBalanceResponse](util.GetIdFromLockBalanceResponse())
-	lockProcessor := transportrabbit.NewAmqpProcessor[balances.LockBalanceResponse](util.GetHandlerForLockBalanceProcessor(lockStorage), util.GetParserForLockBalanceResponse())
+	lockProcessor := transportrabbit.NewAmqpProcessor[balances.LockBalanceResponse](handlers.GetHandlerForLockBalanceProcessor(lockStorage), util.GetParserForLockBalanceResponse())
 	lockListener, err := transportrabbit.NewListener[balances.LockBalanceResponse](
 		ctx,
 		rmqFactory,
@@ -53,9 +53,21 @@ func main() {
 		return
 	}
 
+	transferSender, err := rmqFactory.NewSender(ctx, statics.ExNameBalances, statics.RkTransferBalanceRequest)
+	if err != nil {
+		cancel()
+		return
+	}
 	balanceService := services.NewBalanceService(*lockSender, lockStorage)
 	orderService := services.NewMarketOrderService(&redisCli, balanceService)
-	api := api.NewOrderApi(orderService, *createOrderSender, *getOrderSender)
+	matchingService := services.NewMatcherService(&redisCli, *transferSender)
+	transferProcessor := transportrabbit.NewAmqpProcessor[balances.Transfer](handlers.GetHandlerForTransferProcessor(&matchingService), util.GetParserForTransfer())
+	transferListener, err := transportrabbit.NewListener[balances.Transfer](
+		ctx,
+		rmqFactory,
+		statics.TransferBalanceResponseQueue,
+		transferProcessor)
+	api := api.NewOrderApi(orderService, &matchingService, *createOrderSender, *getOrderSender)
 	handler := handlers.NewHandler(api)
 	getOrderProcessor := transportrabbit.NewAmqpProcessor[orders.GetOrderRequest](handler.GetHandlerForGetOrder(), util.GetParserForGetOrderRequest())
 	createOrderProcessor := transportrabbit.NewAmqpProcessor[orders.CreateOrderRequest](handler.GetHandlerForCreateOrder(), util.GetParserForCreateOrderRequest())
@@ -80,6 +92,7 @@ func main() {
 	go lockListener.Run(ctx)
 	go createOrderListener.Run(ctx)
 	go getOrderListener.Run(ctx)
+	go transferListener.Run(ctx)
 
 	exit := make(chan os.Signal, 1)
 	for {

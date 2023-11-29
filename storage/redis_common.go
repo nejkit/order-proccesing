@@ -72,6 +72,14 @@ func (c *RedisClient) GetFromSet(ctx context.Context, setName string) ([]string,
 	return c.client.SMembers(ctx, setName).Result()
 }
 
+func (c *RedisClient) CheckInSet(ctx context.Context, setName string, key string) (bool, error) {
+	result, err := c.client.SIsMember(ctx, setName, key).Result()
+	if err != nil {
+		return false, err
+	}
+	return result, nil
+}
+
 func (c *RedisClient) DeleteFromHash(ctx context.Context, key string, field string) {
 	c.client.HDel(ctx, key, field)
 }
@@ -94,7 +102,7 @@ func (c *RedisClient) ZInterStorage(ctx context.Context, config ZInterOptions, o
 
 func (c *RedisClient) ZRange(ctx context.Context, setName string, limit int64) ([]string, error) {
 	ids, err := c.client.ZRange(ctx, setName, 0, limit).Result()
-	if err == redisLib.Nil {
+	if len(ids) == 0 {
 		return nil, errors.New(statics.ErrorOrderNotFound)
 	}
 	if err != nil {

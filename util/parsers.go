@@ -41,3 +41,14 @@ func GetParserForGetOrderRequest() func([]byte) (*orders.GetOrderRequest, error)
 		return &request, nil
 	}
 }
+
+func GetParserForTransfer() func([]byte) (*balances.Transfer, error) {
+	return func(b []byte) (*balances.Transfer, error) {
+		var request balances.Transfer
+		err := proto.Unmarshal(b, &request)
+		if err != nil {
+			return nil, err
+		}
+		return &request, nil
+	}
+}

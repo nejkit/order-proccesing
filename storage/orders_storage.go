@@ -95,7 +95,7 @@ func (o *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) er
 	if err != nil {
 		return err
 	}
-	err = o.redisCli.InsertSet(ctx, OrdersAvailable, request.Id)
+	o.AddAvailabilityForOrder(ctx, request)
 
 	return nil
 }
@@ -117,29 +117,35 @@ func (o *OrderManager) GetOrderById(ctx context.Context, id string) (*OrderInfo,
 	return nil, err
 }
 
-func (o *OrderManager) UpdateOrderState(orderInfo OrderInfo) OrderInfo {
+func (o *OrderManager) UpdateOrderState(orderInfo *OrderInfo) {
 	switch orderInfo.OrderState {
 	case int(orders.OrderState_ORDER_STATE_NEW):
 		orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_IN_PROCESS)
 	case int(orders.OrderState_ORDER_STATE_IN_PROCESS):
-		orderInfo.OrderState = o.fillingStateOrder(orderInfo)
+		o.fillingStateOrder(orderInfo)
+	case int(orders.OrderState_ORDER_STATE_PART_FILL):
+		o.fillingStateOrder(orderInfo)
 	}
-	return orderInfo
+
 }
 
-func (o *OrderManager) fillingStateOrder(orderInfo OrderInfo) int {
-	availableVolume := CalculateAvailableVolume(orderInfo)
-	if availableVolume == 0 {
-		return int(orders.OrderState_ORDER_STATE_FILL)
+func (o *OrderManager) fillingStateOrder(orderInfo *OrderInfo) {
+	availableVolume := CalculateAvailableVolume(*orderInfo)
+	if availableVolume == 0.0 {
+		orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_FILL)
+		return
 	}
 	if availableVolume != orderInfo.InitVolume {
-		return int(orders.OrderState_ORDER_STATE_PART_FILL)
+		orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_PART_FILL)
+		return
 	}
-
-	return int(orders.OrderState_ORDER_STATE_IN_PROCESS)
 }
 
-func ApproveOrder(orderInfo *OrderInfo) {
+func (o *OrderManager) ApproveOrder(ctx context.Context, orderInfo *OrderInfo) error {
+	available, err := o.checkOrderAvailability(ctx, orderInfo.Id)
+	if err != nil {
+		return err
+	}
 	txApproved := true
 	for _, matchInfo := range orderInfo.MatchInfo {
 		if matchInfo.State != orders.MatchState_MATCH_STATE_REJECT && matchInfo.State != orders.MatchState_MATCH_STATE_DONE {
@@ -147,15 +153,15 @@ func ApproveOrder(orderInfo *OrderInfo) {
 		}
 	}
 
-	if txApproved {
+	if txApproved && !available {
 		orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_DONE)
 	}
+	return nil
 }
 
 func (o *OrderManager) UpdateOrderData(ctx context.Context, orderInfo OrderInfo) error {
 	o.mtx.Lock()
 	defer o.mtx.Unlock()
-
 	if orderInfo.OrderState == int(orders.OrderState_ORDER_STATE_FILL) {
 		o.redisCli.DeleteFromSet(ctx, OrdersAvailable, orderInfo.Id)
 	}
@@ -166,6 +172,7 @@ func (o *OrderManager) UpdateOrderData(ctx context.Context, orderInfo OrderInfo)
 	if err != nil {
 		return err
 	}
+	logger.Infoln("Update order. Request: ", string(data))
 	err = o.redisCli.InsertHash(ctx, OrdersHash, orderInfo.Id, data)
 	if err != nil {
 		return err
@@ -208,7 +215,10 @@ func (o *OrderManager) GetOrderIdsForMatching(ctx context.Context, id string) ([
 	if err != nil {
 		return nil, err
 	}
-	priceFilter, err := o.getPriceFilterForLimitOrderByInfo(ctx, orderInfo)
+	priceFilter := &OrdersPrice
+	if orderInfo.OrderType == int(orders.OrderType_ORDER_TYPE_LIMIT) {
+		priceFilter, err = o.getPriceFilterForLimitOrderByInfo(ctx, orderInfo)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -219,10 +229,11 @@ func (o *OrderManager) GetOrderIdsForMatching(ctx context.Context, id string) ([
 	}, id)
 	defer o.redisCli.client.Del(ctx, candidatesSet)
 	matchOrderIds, err := o.redisCli.ZRange(ctx, candidatesSet, -1)
-	logger.Infoln("Candidates for matching: ", strings.Join(matchOrderIds, ", "))
-	if matchOrderIds == nil {
-		return nil, errors.New(statics.ErrorOrderNotFound)
+	if err != nil {
+		return nil, err
 	}
+	logger.Infoln("Candidates for matching: ", strings.Join(matchOrderIds, ", "))
+
 	return matchOrderIds, nil
 }
 
@@ -319,4 +330,8 @@ func (m *OrderManager) AddTransferData(ctx context.Context, transferId string, f
 		return err
 	}
 	return nil
+}
+
+func (m *OrderManager) checkOrderAvailability(ctx context.Context, orderId string) (bool, error) {
+	return m.redisCli.CheckInSet(ctx, OrdersAvailable, orderId)
 }

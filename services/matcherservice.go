@@ -9,6 +9,7 @@ import (
 	"order-processing/storage"
 	transportrabbit "order-processing/transport_rabbit"
 	"order-processing/util"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,18 +22,16 @@ var (
 )
 
 type MatcherService struct {
-	store           *storage.OrderManager
-	transferSender  transportrabbit.AmqpSender
-	transferStorage transportrabbit.AmqpStorage[balances.Transfer]
-	mtx             sync.Mutex
+	store          *storage.OrderManager
+	transferSender transportrabbit.AmqpSender
+	mtx            sync.Mutex
 }
 
-func NewMatcherService(om *storage.OrderManager, tsender transportrabbit.AmqpSender, tstorage transportrabbit.AmqpStorage[balances.Transfer]) MatcherService {
+func NewMatcherService(om *storage.OrderManager, tsender transportrabbit.AmqpSender) MatcherService {
 	return MatcherService{
-		store:           om,
-		transferSender:  tsender,
-		transferStorage: tstorage,
-		mtx:             sync.Mutex{},
+		store:          om,
+		transferSender: tsender,
+		mtx:            sync.Mutex{},
 	}
 }
 
@@ -42,22 +41,29 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 
 	orderInfo, err := s.store.GetOrderById(ctx, id)
 	if err != nil {
+		logger.Errorln(err.Error())
 		return err
 	}
 
 	listOrdersForMatching, err := s.store.GetOrderIdsForMatching(ctx, id)
-	if err == ErrorNotFound {
+	logger.Infoln("Orders for matching: ", strings.Join(listOrdersForMatching, ", "))
+	if err != nil && err.Error() == statics.ErrorOrderNotFound {
 		if orderInfo.OrderType == int(orders.OrderType_ORDER_TYPE_MARKET) {
 			orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_REJECT)
-			s.store.UpdateOrderData(ctx, *orderInfo)
+			err := s.store.UpdateOrderData(ctx, *orderInfo)
+			logger.Errorln("Order was rejected")
+			if err != nil {
+				logger.Errorln(err.Error())
+			}
 		}
 		return nil
 	}
 	if err != nil {
+		logger.Errorln(err.Error())
 		return err
 	}
 
-	orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_IN_PROCESS)
+	s.store.UpdateOrderState(orderInfo)
 	s.store.UpdateOrderData(ctx, *orderInfo)
 
 	for _, id := range listOrdersForMatching {
@@ -67,13 +73,11 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 		}
 		availableAmountRootOrder := storage.CalculateAvailableVolume(*orderInfo)
 		if availableAmountRootOrder == 0 {
-			s.store.UpdateOrderData(ctx, *orderInfo)
-			return nil
+			break
 		}
-		if candidateMatchingInfo.OrderState == int(orders.OrderState_ORDER_STATE_NEW) {
-			candidateMatchingInfo.OrderState = int(orders.OrderState_ORDER_STATE_IN_PROCESS)
-			s.store.UpdateOrderData(ctx, *candidateMatchingInfo)
-		}
+
+		s.store.UpdateOrderState(candidateMatchingInfo)
+		s.store.UpdateOrderData(ctx, *candidateMatchingInfo)
 
 		availableAmountCandidateOrder := storage.CalculateAvailableVolume(*candidateMatchingInfo)
 		fillVolumeBid := util.Min(availableAmountRootOrder, availableAmountCandidateOrder)
@@ -83,8 +87,14 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 		matchingDataCandidateOrder := buildMatchingInfo(candidateMatchingInfo.InitPrice, fillVolumeBid, transferId, candidateMatchingInfo.Direction)
 		orderInfo.MatchInfo = append(orderInfo.MatchInfo, matchingDataRootOrder)
 		candidateMatchingInfo.MatchInfo = append(candidateMatchingInfo.MatchInfo, matchingDataCandidateOrder)
-		s.store.UpdateOrderData(ctx, *orderInfo)
-		s.store.UpdateOrderData(ctx, *candidateMatchingInfo)
+		s.store.UpdateOrderState(orderInfo)
+		s.store.UpdateOrderState(candidateMatchingInfo)
+		if err = s.store.UpdateOrderData(ctx, *orderInfo); err != nil {
+			logger.Infoln(err.Error())
+		}
+		if err = s.store.UpdateOrderData(ctx, *candidateMatchingInfo); err != nil {
+			logger.Infoln(err.Error())
+		}
 		s.store.AddTransferData(ctx, transferId, orderInfo.Id, candidateMatchingInfo.Id)
 		go s.sendTransferRequest(ctx, transferId, *orderInfo, *candidateMatchingInfo)
 	}
@@ -129,8 +139,8 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 
 			for _, order := range orderInfo {
 				s.updateStateMatching(ctx, transfer.GetId(), order, orders.MatchState_MATCH_STATE_DONE)
-				storage.ApproveOrder(&order)
-				go s.store.UpdateOrderData(ctx, order)
+				s.store.ApproveOrder(ctx, &order)
+				s.store.UpdateOrderData(ctx, order)
 			}
 			go s.store.DeleteTransferInfo(ctx, transfer.GetId())
 		}
@@ -145,10 +155,10 @@ func buildMatchingInfo(price float64, buyVolume float64, transferId string, dire
 		FillPrice:  price,
 	}
 	if orders.Direction(direction) == orders.Direction_DIRECTION_TYPE_BUY {
-		baseMatchingData.FillVolume = buyVolume
+		baseMatchingData.FillVolume = buyVolume / price
 		return baseMatchingData
 	}
-	baseMatchingData.FillVolume = buyVolume / price
+	baseMatchingData.FillVolume = buyVolume
 	return baseMatchingData
 }
 
