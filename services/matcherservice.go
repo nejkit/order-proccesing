@@ -85,6 +85,7 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 		candidateMatchingInfo.MatchInfo = append(candidateMatchingInfo.MatchInfo, matchingDataCandidateOrder)
 		s.store.UpdateOrderData(ctx, *orderInfo)
 		s.store.UpdateOrderData(ctx, *candidateMatchingInfo)
+		s.store.AddTransferData(ctx, transferId, orderInfo.Id, candidateMatchingInfo.Id)
 		go s.sendTransferRequest(ctx, transferId, *orderInfo, *candidateMatchingInfo)
 	}
 
@@ -103,8 +104,10 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 			orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
 
 			for _, order := range orderInfo {
-				go s.updateStateMatching(ctx, transfer.GetId(), order, orders.MatchState_MATCH_STATE_IN_PROGRESS)
+				s.updateStateMatching(ctx, transfer.GetId(), order, orders.MatchState_MATCH_STATE_IN_PROGRESS)
+				go s.store.UpdateOrderData(ctx, order)
 			}
+
 		}
 	case balances.TransferState_TRANSFER_STATE_REJECT:
 		{
@@ -112,7 +115,8 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 			orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
 
 			for _, order := range orderInfo {
-				go s.updateStateMatching(ctx, transfer.GetId(), order, orders.MatchState_MATCH_STATE_REJECT)
+				s.updateStateMatching(ctx, transfer.GetId(), order, orders.MatchState_MATCH_STATE_REJECT)
+				go s.store.UpdateOrderData(ctx, order)
 				go s.store.AddAvailabilityForOrder(ctx, order)
 			}
 			go s.store.DeleteTransferInfo(ctx, transfer.GetId())
@@ -124,12 +128,12 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 			orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
 
 			for _, order := range orderInfo {
-				go s.updateStateMatching(ctx, transfer.GetId(), order, orders.MatchState_MATCH_STATE_DONE)
+				s.updateStateMatching(ctx, transfer.GetId(), order, orders.MatchState_MATCH_STATE_DONE)
+				storage.ApproveOrder(&order)
+				go s.store.UpdateOrderData(ctx, order)
 			}
 			go s.store.DeleteTransferInfo(ctx, transfer.GetId())
-
 		}
-
 	}
 }
 
@@ -167,16 +171,12 @@ func (s *MatcherService) sendTransferRequest(ctx context.Context, transferId str
 
 }
 
-func (s *MatcherService) updateStateMatching(ctx context.Context, transferId string, orderInfo storage.OrderInfo, state orders.MatchState) error {
+func (s *MatcherService) updateStateMatching(ctx context.Context, transferId string, orderInfo storage.OrderInfo, state orders.MatchState) {
 	for _, matchInfo := range orderInfo.MatchInfo {
 		if matchInfo.TransferId == transferId {
 			matchInfo.State = state
 			break
 		}
 	}
-	err := s.store.UpdateOrderData(ctx, orderInfo)
-	if err != nil {
-		return err
-	}
-	return nil
+
 }

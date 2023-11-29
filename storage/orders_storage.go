@@ -117,28 +117,49 @@ func (o *OrderManager) GetOrderById(ctx context.Context, id string) (*OrderInfo,
 	return nil, err
 }
 
+func (o *OrderManager) UpdateOrderState(orderInfo OrderInfo) OrderInfo {
+	switch orderInfo.OrderState {
+	case int(orders.OrderState_ORDER_STATE_NEW):
+		orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_IN_PROCESS)
+	case int(orders.OrderState_ORDER_STATE_IN_PROCESS):
+		orderInfo.OrderState = o.fillingStateOrder(orderInfo)
+	}
+	return orderInfo
+}
+
+func (o *OrderManager) fillingStateOrder(orderInfo OrderInfo) int {
+	availableVolume := CalculateAvailableVolume(orderInfo)
+	if availableVolume == 0 {
+		return int(orders.OrderState_ORDER_STATE_FILL)
+	}
+	if availableVolume != orderInfo.InitVolume {
+		return int(orders.OrderState_ORDER_STATE_PART_FILL)
+	}
+
+	return int(orders.OrderState_ORDER_STATE_IN_PROCESS)
+}
+
+func ApproveOrder(orderInfo *OrderInfo) {
+	txApproved := true
+	for _, matchInfo := range orderInfo.MatchInfo {
+		if matchInfo.State != orders.MatchState_MATCH_STATE_REJECT && matchInfo.State != orders.MatchState_MATCH_STATE_DONE {
+			txApproved = false
+		}
+	}
+
+	if txApproved {
+		orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_DONE)
+	}
+}
+
 func (o *OrderManager) UpdateOrderData(ctx context.Context, orderInfo OrderInfo) error {
 	o.mtx.Lock()
 	defer o.mtx.Unlock()
 
-	availableVolume := CalculateAvailableVolume(orderInfo)
-	if orderInfo.InitVolume != availableVolume {
-		orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_PART_FILL)
+	if orderInfo.OrderState == int(orders.OrderState_ORDER_STATE_FILL) {
+		o.redisCli.DeleteFromSet(ctx, OrdersAvailable, orderInfo.Id)
 	}
 
-	if availableVolume == 0 {
-		o.redisCli.DeleteFromSet(ctx, OrdersAvailable, orderInfo.Id)
-		orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_FILL)
-		txApproved := true
-		for _, matchInfo := range orderInfo.MatchInfo {
-			if matchInfo.State != orders.MatchState_MATCH_STATE_REJECT && matchInfo.State != orders.MatchState_MATCH_STATE_DONE {
-				txApproved = false
-			}
-		}
-		if txApproved {
-			orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_DONE)
-		}
-	}
 	orderInfo.UpdatedDate = uint64(time.Now().Unix())
 
 	data, err := json.Marshal(orderInfo)
@@ -286,4 +307,16 @@ func (m *OrderManager) AddAvailabilityForOrder(ctx context.Context, order OrderI
 	if order.OrderType == int(orders.OrderType_ORDER_TYPE_LIMIT) {
 		m.redisCli.InsertSet(ctx, OrdersAvailable, order.Id)
 	}
+}
+
+func (m *OrderManager) AddTransferData(ctx context.Context, transferId string, firstOrder string, secondOrder string) error {
+	err := m.redisCli.InsertSet(ctx, Transfers+transferId, firstOrder)
+	if err != nil {
+		return err
+	}
+	err = m.redisCli.InsertSet(ctx, Transfers+transferId, secondOrder)
+	if err != nil {
+		return err
+	}
+	return nil
 }
