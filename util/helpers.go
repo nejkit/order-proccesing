@@ -1,6 +1,9 @@
 package util
 
-import "strings"
+import (
+	"order-processing/external/orders"
+	"strings"
+)
 
 func Min(a, b float64) float64 {
 	if a <= b {
@@ -10,5 +13,9 @@ func Min(a, b float64) float64 {
 }
 
 func ParseCurrencyFromDirection(pair string, dir int) string {
-	return strings.Split(pair, "/")[dir-1]
+	if dir == int(orders.Direction_DIRECTION_TYPE_BUY) {
+		return strings.Split(pair, "/")[0]
+	}
+	return strings.Split(pair, "/")[1]
+
 }

@@ -24,13 +24,15 @@ var (
 type MatcherService struct {
 	store          *storage.OrderManager
 	transferSender transportrabbit.AmqpSender
+	unlockSender   transportrabbit.AmqpSender
 	mtx            sync.Mutex
 }
 
-func NewMatcherService(om *storage.OrderManager, tsender transportrabbit.AmqpSender) MatcherService {
+func NewMatcherService(om *storage.OrderManager, tsender transportrabbit.AmqpSender, unsender transportrabbit.AmqpSender) MatcherService {
 	return MatcherService{
 		store:          om,
 		transferSender: tsender,
+		unlockSender:   unsender,
 		mtx:            sync.Mutex{},
 	}
 }
@@ -50,6 +52,16 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 	if err != nil && err.Error() == statics.ErrorOrderNotFound {
 		if orderInfo.OrderType == int(orders.OrderType_ORDER_TYPE_MARKET) {
 			orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_REJECT)
+			amount := orderInfo.InitVolume
+			if orderInfo.Direction == int(orders.Direction_DIRECTION_TYPE_BUY) {
+				amount *= orderInfo.InitPrice * 1.15
+			}
+			go s.unlockSender.SendMessage(ctx, &balances.UnLockBalanceRequest{
+				Id:       uuid.NewString(),
+				Address:  orderInfo.ExchangeWallet,
+				Currency: util.ParseCurrencyFromDirection(orderInfo.CurrencyPair, orderInfo.Direction),
+				Amount:   float32(amount),
+			})
 			err := s.store.UpdateOrderData(ctx, *orderInfo)
 			logger.Errorln("Order was rejected")
 			if err != nil {
