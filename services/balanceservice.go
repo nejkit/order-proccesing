@@ -2,10 +2,8 @@ package services
 
 import (
 	"context"
-	"errors"
 	"order-processing/external/balances"
 	"order-processing/external/orders"
-	"order-processing/statics"
 	transportrabbit "order-processing/transport_rabbit"
 	"order-processing/util"
 
@@ -20,26 +18,22 @@ var (
 )
 
 type BalanceService struct {
-	lockSender transportrabbit.AmqpSender
-	storage    transportrabbit.AmqpStorage[balances.LockBalanceResponse]
+	lockSender     transportrabbit.AmqpSender
+	transferSender transportrabbit.AmqpSender
 }
 
-func NewBalanceService(lockSender transportrabbit.AmqpSender, lockStorage transportrabbit.AmqpStorage[balances.LockBalanceResponse]) BalanceService {
-	return BalanceService{lockSender: lockSender, storage: lockStorage}
+func NewBalanceService(
+	lockSender transportrabbit.AmqpSender,
+	transferSender transportrabbit.AmqpSender) BalanceService {
+	return BalanceService{lockSender: lockSender, transferSender: transferSender}
 }
 
-func (s *BalanceService) LockBalance(ctx context.Context, request *orders.CreateOrderRequest) error {
-	var amount float32
-	switch request.GetDirection() {
-	case orders.Direction_DIRECTION_TYPE_SELL:
-		{
-			amount = request.GetInitVolume()
-		}
-	case orders.Direction_DIRECTION_TYPE_BUY:
-		{
-			multiplier, _ := koeficientMap[request.GetOrderType()]
-			amount = (request.GetInitPrice() * request.GetInitVolume() * multiplier)
-		}
+func (s *BalanceService) LockBalance(ctx context.Context, request *orders.CreateOrderRequest) {
+	amount := request.GetInitVolume()
+
+	if request.GetDirection() == orders.Direction_DIRECTION_TYPE_BUY {
+		multiplier, _ := koeficientMap[request.GetOrderType()]
+		amount = (request.GetInitPrice() * request.GetInitVolume() * multiplier)
 	}
 
 	id := uuid.NewString()
@@ -51,14 +45,8 @@ func (s *BalanceService) LockBalance(ctx context.Context, request *orders.Create
 		Amount:   amount,
 	}
 	s.lockSender.SendMessage(ctx, event)
-	response, err := s.storage.GetMessage(id)
-	if err != nil {
-		return errors.New(statics.InternalError)
-	}
-	if response.GetState() == balances.LockBalanceStatus_DONE {
-		return nil
-	}
+}
 
-	return util.ConvertBalanceError(response.ErrorMessage.GetErrorCode())
-
+func (s *BalanceService) CreateTransfer(ctx context.Context, request *balances.CreateTransferRequest) {
+	s.transferSender.SendMessage(ctx, request)
 }

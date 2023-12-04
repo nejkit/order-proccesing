@@ -7,10 +7,9 @@ import (
 	"fmt"
 	"order-processing/external/orders"
 	"order-processing/statics"
-	"strings"
-	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	logger "github.com/sirupsen/logrus"
 )
 
@@ -57,13 +56,13 @@ type OrderInfo struct {
 }
 
 type OrderManager struct {
-	redisCli RedisClient
-	mtx      sync.Mutex
+	redisCli   RedisClient
+	instanceId string
 }
 
 func NewOrderManager(address string) OrderManager {
 	redisCli := GetNewRedisCli(address)
-	return OrderManager{redisCli: redisCli, mtx: sync.Mutex{}}
+	return OrderManager{redisCli: redisCli, instanceId: uuid.NewString()}
 }
 
 func (o *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) error {
@@ -71,33 +70,25 @@ func (o *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) er
 	if err != nil {
 		return err
 	}
-	err = o.redisCli.InsertHash(ctx, OrdersHash, request.Id, value)
-	if err != nil {
-		return err
-	}
-	err = o.redisCli.InsertZadd(ctx, OrdersPrice, request.Id, request.InitPrice)
-	if err != nil {
-		return err
-	}
-	err = o.redisCli.InsertZadd(ctx, OrdersCreation, request.Id, float64(request.CreationDate))
-	if err != nil {
-		return err
-	}
-	err = o.redisCli.InsertSet(ctx, OrdersCurrencySets+request.CurrencyPair, request.Id)
-	if err != nil {
-		return err
-	}
-	if orders.Direction(request.Direction) == orders.Direction_DIRECTION_TYPE_BUY {
-		err = o.redisCli.InsertSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_SELL.Number()), request.Id)
-	} else {
-		err = o.redisCli.InsertSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_BUY.Number()), request.Id)
-	}
-	if err != nil {
-		return err
-	}
-	o.AddAvailabilityForOrder(ctx, request)
+	go o.redisCli.InsertHash(ctx, OrdersHash, request.Id, value)
 
 	return nil
+}
+
+func (o *OrderManager) AddLimitOrderToStockBook(ctx context.Context, orderInfo OrderInfo) {
+	go o.redisCli.InsertZadd(ctx, OrdersPrice, orderInfo.Id, orderInfo.InitPrice)
+
+	go o.redisCli.InsertZadd(ctx, OrdersCreation, orderInfo.Id, float64(orderInfo.CreationDate))
+
+	go o.redisCli.InsertSet(ctx, OrdersCurrencySets+orderInfo.CurrencyPair, orderInfo.Id)
+
+	if orders.Direction(orderInfo.Direction) == orders.Direction_DIRECTION_TYPE_BUY {
+		go o.redisCli.InsertSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_SELL.Number()), orderInfo.Id)
+	} else {
+		go o.redisCli.InsertSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_BUY.Number()), orderInfo.Id)
+	}
+
+	go o.AddAvailabilityForOrder(ctx, orderInfo)
 }
 
 func (o *OrderManager) GetOrderById(ctx context.Context, id string) (*OrderInfo, error) {
@@ -119,8 +110,6 @@ func (o *OrderManager) GetOrderById(ctx context.Context, id string) (*OrderInfo,
 
 func (o *OrderManager) UpdateOrderState(orderInfo *OrderInfo) {
 	switch orderInfo.OrderState {
-	case int(orders.OrderState_ORDER_STATE_NEW):
-		orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_IN_PROCESS)
 	case int(orders.OrderState_ORDER_STATE_IN_PROCESS):
 		o.fillingStateOrder(orderInfo)
 	case int(orders.OrderState_ORDER_STATE_PART_FILL):
@@ -141,7 +130,7 @@ func (o *OrderManager) fillingStateOrder(orderInfo *OrderInfo) {
 	}
 }
 
-func (o *OrderManager) ApproveOrder(ctx context.Context, orderInfo *OrderInfo) error {
+func (o *OrderManager) TryDoneOrder(ctx context.Context, orderInfo *OrderInfo) error {
 	available, err := o.checkOrderAvailability(ctx, orderInfo.Id)
 	if err != nil {
 		return err
@@ -160,8 +149,6 @@ func (o *OrderManager) ApproveOrder(ctx context.Context, orderInfo *OrderInfo) e
 }
 
 func (o *OrderManager) UpdateOrderData(ctx context.Context, orderInfo OrderInfo) error {
-	o.mtx.Lock()
-	defer o.mtx.Unlock()
 	if orderInfo.OrderState == int(orders.OrderState_ORDER_STATE_FILL) {
 		o.redisCli.DeleteFromSet(ctx, OrdersAvailable, orderInfo.Id)
 	}
@@ -182,8 +169,7 @@ func (o *OrderManager) UpdateOrderData(ctx context.Context, orderInfo OrderInfo)
 }
 
 func (o *OrderManager) DeleteOrderById(ctx context.Context, id string) error {
-	o.mtx.Lock()
-	defer o.mtx.Unlock()
+
 	orderInfo, err := o.redisCli.GetFromHash(ctx, OrdersHash, id)
 	if err != nil {
 		return err
@@ -207,8 +193,7 @@ func (o *OrderManager) DeleteOrderById(ctx context.Context, id string) error {
 }
 
 func (o *OrderManager) GetOrderIdsForMatching(ctx context.Context, id string) ([]string, error) {
-	o.mtx.Lock()
-	defer o.mtx.Unlock()
+
 	info, err := o.redisCli.GetFromHash(ctx, OrdersHash, id)
 	var orderInfo OrderInfo
 	err = json.Unmarshal([]byte(*info), &orderInfo)
@@ -232,7 +217,6 @@ func (o *OrderManager) GetOrderIdsForMatching(ctx context.Context, id string) ([
 	if err != nil {
 		return nil, err
 	}
-	logger.Infoln("Candidates for matching: ", strings.Join(matchOrderIds, ", "))
 
 	return matchOrderIds, nil
 }
@@ -334,4 +318,34 @@ func (m *OrderManager) AddTransferData(ctx context.Context, transferId string, f
 
 func (m *OrderManager) checkOrderAvailability(ctx context.Context, orderId string) (bool, error) {
 	return m.redisCli.CheckInSet(ctx, OrdersAvailable, orderId)
+}
+
+func (s *OrderManager) TryLockOrder(ctx context.Context, id string) error {
+	exists, err := s.redisCli.SetNXKey(ctx, "lock_"+OrdersHash+":"+id, s.instanceId)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return errors.New("ResourceIsBlocked")
+	}
+	return nil
+}
+
+func (s *OrderManager) CheckLockOrder(ctx context.Context, id string) (bool, error) {
+	_, err := s.redisCli.GetKey(ctx, "lock_"+OrdersHash+":"+id)
+	if err != nil && err.Error() == statics.ErrorOrderNotFound {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+
+}
+
+func (s *OrderManager) TryUnlockOrder(ctx context.Context, id string) error {
+	if err := s.redisCli.DelKeyWithValue(ctx, "lock_"+OrdersHash+":"+id, s.instanceId); err != nil {
+		return err
+	}
+	return nil
 }

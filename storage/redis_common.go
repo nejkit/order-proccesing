@@ -111,6 +111,62 @@ func (c *RedisClient) ZRange(ctx context.Context, setName string, limit int64) (
 	return ids, nil
 }
 
+func (c *RedisClient) SetNXKey(ctx context.Context, key string, value string) (bool, error) {
+	result, err := c.client.SetNX(ctx, key, value, -1).Result()
+	if err == redisLib.Nil {
+		return result, errors.New(statics.ErrorOrderNotFound)
+	}
+	if err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func (c *RedisClient) SetKey(ctx context.Context, key string, value string) error {
+	_, err := c.client.Set(ctx, key, value, -1).Result()
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *RedisClient) GetKeysByPattern(ctx context.Context, pattern string) ([]string, error) {
+	result, err := c.client.Keys(ctx, pattern).Result()
+	if err == redisLib.Nil {
+		return result, errors.New(statics.ErrorOrderNotFound)
+	}
+	if err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func (c *RedisClient) GetKey(ctx context.Context, key string) (string, error) {
+	result, err := c.client.Get(ctx, key).Result()
+	if err == redisLib.Nil {
+		return result, errors.New(statics.ErrorOrderNotFound)
+	}
+	if err != nil {
+		return result, err
+	}
+	return result, nil
+}
+
+func (c *RedisClient) DelKeyWithValue(ctx context.Context, key string, value string) error {
+	identifier, err := c.client.Get(ctx, key).Result()
+	if err != nil {
+		return err
+	}
+	if identifier == value {
+		_, err = c.client.Del(ctx, key).Result()
+	}
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c *RedisClient) PrepareIndexWithLimitOption(ctx context.Context, options LimitOptions) (*string, error) {
 	indexName := "orders:limit_price:" + fmt.Sprintf("%f", options.minPrice) + fmt.Sprintf("%f", options.maxPrice)
 	c.client.ZInterStore(ctx, indexName, &redisLib.ZStore{

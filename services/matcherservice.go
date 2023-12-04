@@ -5,12 +5,12 @@ import (
 	"errors"
 	"order-processing/external/balances"
 	"order-processing/external/orders"
+	"order-processing/external/tickets"
 	"order-processing/statics"
 	"order-processing/storage"
 	transportrabbit "order-processing/transport_rabbit"
 	"order-processing/util"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,24 +22,20 @@ var (
 )
 
 type MatcherService struct {
-	store          *storage.OrderManager
-	transferSender transportrabbit.AmqpSender
-	unlockSender   transportrabbit.AmqpSender
-	mtx            sync.Mutex
+	store        *storage.OrderManager
+	ticketStore  storage.TicketStorage
+	unlockSender transportrabbit.AmqpSender
 }
 
-func NewMatcherService(om *storage.OrderManager, tsender transportrabbit.AmqpSender, unsender transportrabbit.AmqpSender) MatcherService {
+func NewMatcherService(om *storage.OrderManager, tsender transportrabbit.AmqpSender, unsender transportrabbit.AmqpSender, ticketStore storage.TicketStorage) MatcherService {
 	return MatcherService{
-		store:          om,
-		transferSender: tsender,
-		unlockSender:   unsender,
-		mtx:            sync.Mutex{},
+		store:        om,
+		unlockSender: unsender,
+		ticketStore:  ticketStore,
 	}
 }
 
 func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
 
 	orderInfo, err := s.store.GetOrderById(ctx, id)
 	if err != nil {
@@ -49,25 +45,25 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 
 	listOrdersForMatching, err := s.store.GetOrderIdsForMatching(ctx, id)
 	logger.Infoln("Orders for matching: ", strings.Join(listOrdersForMatching, ", "))
-	if err != nil && err.Error() == statics.ErrorOrderNotFound {
-		if orderInfo.OrderType == int(orders.OrderType_ORDER_TYPE_MARKET) {
-			orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_REJECT)
-			amount := orderInfo.InitVolume
-			if orderInfo.Direction == int(orders.Direction_DIRECTION_TYPE_BUY) {
-				amount *= orderInfo.InitPrice * 1.15
-			}
-			go s.unlockSender.SendMessage(ctx, &balances.UnLockBalanceRequest{
-				Id:       uuid.NewString(),
-				Address:  orderInfo.ExchangeWallet,
-				Currency: util.ParseCurrencyFromDirection(orderInfo.CurrencyPair, orderInfo.Direction),
-				Amount:   float32(amount),
-			})
-			err := s.store.UpdateOrderData(ctx, *orderInfo)
-			logger.Errorln("Order was rejected")
-			if err != nil {
-				logger.Errorln(err.Error())
-			}
+	if err != nil && err.Error() == statics.ErrorOrderNotFound && orderInfo.OrderType == int(orders.OrderType_ORDER_TYPE_MARKET) {
+		orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_REJECT)
+		amount := orderInfo.InitVolume
+		if orderInfo.Direction == int(orders.Direction_DIRECTION_TYPE_BUY) {
+			amount *= orderInfo.InitPrice * 1.15
 		}
+		go s.unlockSender.SendMessage(ctx, &balances.UnLockBalanceRequest{
+			Id:       uuid.NewString(),
+			Address:  orderInfo.ExchangeWallet,
+			Currency: util.ParseCurrencyFromDirection(orderInfo.CurrencyPair, orderInfo.Direction),
+			Amount:   float32(amount),
+		})
+		err := s.store.UpdateOrderData(ctx, *orderInfo)
+		logger.Errorln("Order was rejected")
+		if err != nil {
+			logger.Errorln(err.Error())
+		}
+	}
+	if err != nil && err.Error() == statics.ErrorOrderNotFound {
 		return nil
 	}
 	if err != nil {
@@ -75,17 +71,19 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 		return err
 	}
 
-	s.store.UpdateOrderState(orderInfo)
-	s.store.UpdateOrderData(ctx, *orderInfo)
-
 	for _, id := range listOrdersForMatching {
 		candidateMatchingInfo, err := s.store.GetOrderById(ctx, id)
 		if err != nil {
 			continue
 		}
+
 		availableAmountRootOrder := storage.CalculateAvailableVolume(*orderInfo)
 		if availableAmountRootOrder == 0 {
 			break
+		}
+
+		if lock := s.tryLockOrderInfo(ctx, *candidateMatchingInfo); lock == false {
+			continue
 		}
 
 		s.store.UpdateOrderState(candidateMatchingInfo)
@@ -108,6 +106,7 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 			logger.Infoln(err.Error())
 		}
 		s.store.AddTransferData(ctx, transferId, orderInfo.Id, candidateMatchingInfo.Id)
+		s.store.TryUnlockOrder(ctx, candidateMatchingInfo.Id)
 		go s.sendTransferRequest(ctx, transferId, *orderInfo, *candidateMatchingInfo)
 	}
 
@@ -126,6 +125,9 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 			orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
 
 			for _, order := range orderInfo {
+				if err := s.tryLockOrderInfo(ctx, order); err == false {
+					continue
+				}
 				s.updateStateMatching(ctx, transfer.GetId(), order, orders.MatchState_MATCH_STATE_IN_PROGRESS)
 				go s.store.UpdateOrderData(ctx, order)
 			}
@@ -137,9 +139,13 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 			orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
 
 			for _, order := range orderInfo {
+				if err := s.tryLockOrderInfo(ctx, order); err == false {
+					continue
+				}
 				s.updateStateMatching(ctx, transfer.GetId(), order, orders.MatchState_MATCH_STATE_REJECT)
-				go s.store.UpdateOrderData(ctx, order)
-				go s.store.AddAvailabilityForOrder(ctx, order)
+				s.store.UpdateOrderData(ctx, order)
+				s.store.AddAvailabilityForOrder(ctx, order)
+				s.store.TryUnlockOrder(ctx, order.Id)
 			}
 			go s.store.DeleteTransferInfo(ctx, transfer.GetId())
 
@@ -150,9 +156,13 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 			orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
 
 			for _, order := range orderInfo {
+				if err := s.tryLockOrderInfo(ctx, order); err == false {
+					continue
+				}
 				s.updateStateMatching(ctx, transfer.GetId(), order, orders.MatchState_MATCH_STATE_DONE)
-				s.store.ApproveOrder(ctx, &order)
+				s.store.TryDoneOrder(ctx, &order)
 				s.store.UpdateOrderData(ctx, order)
+				s.store.TryUnlockOrder(ctx, order.Id)
 			}
 			go s.store.DeleteTransferInfo(ctx, transfer.GetId())
 		}
@@ -189,8 +199,7 @@ func (s *MatcherService) sendTransferRequest(ctx context.Context, transferId str
 			Currency: util.ParseCurrencyFromDirection(secondOrder.CurrencyPair, secondOrder.Direction),
 			Amount:   float32(matchInfoSecond.FillVolume),
 		}}
-	s.transferSender.SendMessage(ctx, &event)
-
+	s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_CREATE_TRANSFER, &event)
 }
 
 func (s *MatcherService) updateStateMatching(ctx context.Context, transferId string, orderInfo storage.OrderInfo, state orders.MatchState) {
@@ -200,5 +209,14 @@ func (s *MatcherService) updateStateMatching(ctx context.Context, transferId str
 			break
 		}
 	}
+}
 
+func (s *MatcherService) tryLockOrderInfo(ctx context.Context, orderInfo storage.OrderInfo) bool {
+	for i := 0; i < 500; i++ {
+		if err := s.store.TryLockOrder(ctx, orderInfo.Id); err == nil {
+			return true
+		}
+		time.Sleep(1 * time.Millisecond)
+	}
+	return false
 }

@@ -8,6 +8,7 @@ const (
 	QueueNameGetOrderResponse    = "q.orders.response.GetOrderResponse"
 	QueueNameGetOrderRequest     = "q.orders.request.GetOrderRequest"
 	QueueNameLockBalanceResponse = "q.balances.response.LockBalanceResponse"
+	UnLockBalanceResponseQueue   = "q.balances.response.UnLockBalanceResponse"
 	TransferBalanceResponseQueue = "q.balances.response.TransferBalanceResponse"
 	RkTransferBalanceRequest     = "r.balances.#.TransferBalanceRequest.#"
 	RkLockBalanceRequest         = "r.order-processing.request.LockBalanceRequest.#"
@@ -15,4 +16,5 @@ const (
 	RkCreateOrderResponse        = "r.response.#.CreateOrderResponse.#"
 	RkGetOrderRequest            = "r.request.#.GetOrderRequest.#"
 	RkGetOrderResponse           = "r.response.#.GetOrderResponse.#"
+	RkUnLockBalanceRequest       = "r.#.request.UnLockBalanceRequest.#"
 )

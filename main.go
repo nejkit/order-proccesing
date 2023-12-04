@@ -26,6 +26,7 @@ func main() {
 	rmqFactory := transportrabbit.NewFactory("amqp://admin:admin@rabbitmq:5672")
 	rmqFactory.InitRmq()
 	redisCli := storage.NewOrderManager("redis:6379")
+	ticketStore := storage.NewTicketStorage(storage.GetNewRedisCli("redis:6379"))
 	lockSender, err := rmqFactory.NewSender(ctx, statics.ExNameBalances, statics.RkLockBalanceRequest)
 	if err != nil {
 		cancel()
@@ -41,8 +42,23 @@ func main() {
 		cancel()
 		return
 	}
-	lockStorage := transportrabbit.NewAmqpStorage[balances.LockBalanceResponse](util.GetIdFromLockBalanceResponse())
-	lockProcessor := transportrabbit.NewAmqpProcessor[balances.LockBalanceResponse](handlers.GetHandlerForLockBalanceProcessor(lockStorage), util.GetParserForLockBalanceResponse())
+
+	transferSender, err := rmqFactory.NewSender(ctx, statics.ExNameBalances, statics.RkTransferBalanceRequest)
+	if err != nil {
+		cancel()
+		return
+	}
+	unlockSender, err := rmqFactory.NewSender(ctx, statics.ExNameBalances, statics.RkUnLockBalanceRequest)
+	if err != nil {
+		cancel()
+		return
+	}
+
+	orderService := services.NewMarketOrderService(&redisCli, ticketStore)
+	matchingService := services.NewMatcherService(&redisCli, *transferSender, *unlockSender, ticketStore)
+	api := api.NewOrderApi(orderService, &matchingService, *createOrderSender, *getOrderSender)
+	handler := handlers.NewHandler(api, ticketStore)
+	lockProcessor := transportrabbit.NewAmqpProcessor[balances.LockBalanceResponse](handler.GetHandlerForLockBalance(), util.GetParserForLockBalanceResponse())
 	lockListener, err := transportrabbit.NewListener[balances.LockBalanceResponse](
 		ctx,
 		rmqFactory,
@@ -52,23 +68,15 @@ func main() {
 		cancel()
 		return
 	}
-
-	transferSender, err := rmqFactory.NewSender(ctx, statics.ExNameBalances, statics.RkTransferBalanceRequest)
-	if err != nil {
-		cancel()
-		return
-	}
-	balanceService := services.NewBalanceService(*lockSender, lockStorage)
-	orderService := services.NewMarketOrderService(&redisCli, balanceService)
-	matchingService := services.NewMatcherService(&redisCli, *transferSender)
+	balanceService := services.NewBalanceService(*lockSender, *transferSender)
+	ticketHandler := handlers.NewTicketHandler(ticketStore, orderService, &matchingService, balanceService)
 	transferProcessor := transportrabbit.NewAmqpProcessor[balances.Transfer](handlers.GetHandlerForTransferProcessor(&matchingService), util.GetParserForTransfer())
 	transferListener, err := transportrabbit.NewListener[balances.Transfer](
 		ctx,
 		rmqFactory,
 		statics.TransferBalanceResponseQueue,
 		transferProcessor)
-	api := api.NewOrderApi(orderService, &matchingService, *createOrderSender, *getOrderSender)
-	handler := handlers.NewHandler(api)
+
 	getOrderProcessor := transportrabbit.NewAmqpProcessor[orders.GetOrderRequest](handler.GetHandlerForGetOrder(), util.GetParserForGetOrderRequest())
 	createOrderProcessor := transportrabbit.NewAmqpProcessor[orders.CreateOrderRequest](handler.GetHandlerForCreateOrder(), util.GetParserForCreateOrderRequest())
 	createOrderListener, err := transportrabbit.NewListener[orders.CreateOrderRequest](
@@ -89,6 +97,7 @@ func main() {
 		cancel()
 		return
 	}
+	go ticketHandler.Handle(ctx)
 	go lockListener.Run(ctx)
 	go createOrderListener.Run(ctx)
 	go getOrderListener.Run(ctx)
