@@ -103,6 +103,14 @@ func (h *TicketHandler) Handle(ctx context.Context) {
 					continue
 				}
 				go h.handleCreateOrderResponse(ctx, request, ticketId)
+			case tickets.OperationType_OPERATION_TYPE_UNLOCK_BALANCE:
+				request := &balances.UnLockBalanceRequest{}
+				if err := proto.Unmarshal(ticketInfo.Data, request); err != nil {
+					logger.Errorln(err.Error())
+					continue
+				}
+				go h.handleUnlockBalance(ctx, request, ticketId)
+
 			default:
 				logger.Warningln("Ticket operation ", ticketInfo.OperationType, " unsupported, skipping...")
 				continue
@@ -152,5 +160,10 @@ func (h *TicketHandler) handleCreateTransfer(ctx context.Context, request *balan
 
 func (h *TicketHandler) handleTransfer(ctx context.Context, request *balances.Transfer, ticketId string) {
 	h.matchingService.HandleTransfersResponse(ctx, request)
+	//h.ticketStore.DeleteTicket(ctx, ticketId)
+}
+
+func (h *TicketHandler) handleUnlockBalance(ctx context.Context, request *balances.UnLockBalanceRequest, ticketId string) {
+	h.balanceService.UnLockBalance(ctx, request)
 	//h.ticketStore.DeleteTicket(ctx, ticketId)
 }

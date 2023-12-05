@@ -18,14 +18,16 @@ var (
 	OrdersPrice             = "orders:price"
 	OrdersCreation          = "orders:creation"
 	OrdersCurrencySets      = "orders:currency:"
-	OrdersDirectionSets     = "orders:direction:"
 	OrdersMatchingCandidate = "orders:match:"
-	OrdersAvailable         = "orders:available"
 	Transfers               = "transfers:"
 	MatchingCandidates      = "orders:candidates:"
 	OrderPriceSortDirection = map[int]int{
 		int(orders.Direction_DIRECTION_TYPE_BUY.Number()):  1,
 		int(orders.Direction_DIRECTION_TYPE_SELL.Number()): -1,
+	}
+	SearchDirectionInMatching = map[int]int{
+		int(orders.Direction_DIRECTION_TYPE_BUY):  int(orders.Direction_DIRECTION_TYPE_SELL),
+		int(orders.Direction_DIRECTION_TYPE_SELL): int(orders.Direction_DIRECTION_TYPE_BUY),
 	}
 )
 
@@ -75,17 +77,19 @@ func (o *OrderManager) InsertNewOrder(ctx context.Context, request OrderInfo) er
 }
 
 func (o *OrderManager) AddLimitOrderToStockBook(ctx context.Context, orderInfo OrderInfo) {
-	go o.redisCli.InsertZadd(ctx, OrdersPrice, orderInfo.Id, orderInfo.InitPrice)
+	o.redisCli.InsertZadd(ctx, OrdersPrice, orderInfo.Id, orderInfo.InitPrice)
 
-	go o.redisCli.InsertZadd(ctx, OrdersCreation, orderInfo.Id, float64(orderInfo.CreationDate))
+	o.redisCli.InsertZadd(ctx, OrdersCreation, orderInfo.Id, float64(orderInfo.CreationDate))
 
-	go o.redisCli.InsertSet(ctx, OrdersCurrencySets+orderInfo.CurrencyPair, orderInfo.Id)
+	o.redisCli.InsertSet(ctx, OrdersCurrencySets+orderInfo.CurrencyPair+":"+fmt.Sprintf("%d", orderInfo.Direction), orderInfo.Id)
+}
 
-	if orders.Direction(orderInfo.Direction) == orders.Direction_DIRECTION_TYPE_BUY {
-		go o.redisCli.InsertSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_SELL.Number()), orderInfo.Id)
-	} else {
-		go o.redisCli.InsertSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_BUY.Number()), orderInfo.Id)
-	}
+func (o *OrderManager) DropLimitOrderToStockBook(ctx context.Context, orderInfo OrderInfo) {
+	go o.redisCli.DeleteFromZAdd(ctx, OrdersPrice, orderInfo.Id)
+
+	go o.redisCli.DeleteFromZAdd(ctx, OrdersCreation, orderInfo.Id)
+
+	go o.redisCli.DeleteFromSet(ctx, OrdersCurrencySets+orderInfo.CurrencyPair+":"+fmt.Sprintf("%d", orderInfo.Direction), orderInfo.Id)
 }
 
 func (o *OrderManager) GetOrderById(ctx context.Context, id string) (*OrderInfo, error) {
@@ -128,10 +132,6 @@ func (o *OrderManager) fillingStateOrder(orderInfo *OrderInfo) {
 }
 
 func (o *OrderManager) UpdateOrderData(ctx context.Context, orderInfo OrderInfo) error {
-	if orderInfo.OrderState == int(orders.OrderState_ORDER_STATE_FILL) {
-		o.redisCli.DeleteFromSet(ctx, OrdersAvailable, orderInfo.Id)
-	}
-
 	orderInfo.UpdatedDate = uint64(time.Now().UTC().UnixMilli())
 
 	data, err := json.Marshal(orderInfo)
@@ -161,13 +161,7 @@ func (o *OrderManager) DeleteOrderById(ctx context.Context, id string) error {
 	o.redisCli.DeleteFromHash(ctx, OrdersHash, id)
 	o.redisCli.DeleteFromZAdd(ctx, OrdersPrice, id)
 	o.redisCli.DeleteFromZAdd(ctx, OrdersCreation, id)
-	o.redisCli.DeleteFromSet(ctx, OrdersCurrencySets+orderModel.CurrencyPair, id)
-	if orderModel.Direction == int(orders.Direction_DIRECTION_TYPE_BUY) {
-		o.redisCli.DeleteFromSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_SELL), id)
-		return nil
-	}
-	o.redisCli.DeleteFromSet(ctx, OrdersDirectionSets+fmt.Sprintf("%d", orders.Direction_DIRECTION_TYPE_BUY), id)
-	o.redisCli.DeleteFromSet(ctx, OrdersAvailable, id)
+	o.redisCli.DeleteFromSet(ctx, OrdersCurrencySets+orderModel.CurrencyPair+":"+fmt.Sprintf("%d", orderModel.Direction), id)
 	return nil
 }
 
@@ -189,8 +183,8 @@ func (o *OrderManager) GetOrderIdsForMatching(ctx context.Context, id string) ([
 	}
 	candidatesSet := o.redisCli.ZInterStorage(ctx, ZInterOptions{
 		prefix:  MatchingCandidates,
-		keys:    []string{*priceFilter, OrdersCreation, OrdersCurrencySets + orderInfo.CurrencyPair, OrdersDirectionSets + fmt.Sprintf("%d", orderInfo.Direction)},
-		weights: []float64{float64(time.Now().Unix()*100) * float64(OrderPriceSortDirection[orderInfo.Direction]), 1, 0, 0},
+		keys:    []string{*priceFilter, OrdersCreation, OrdersCurrencySets + orderInfo.CurrencyPair + ":" + fmt.Sprintf("%d", SearchDirectionInMatching[orderInfo.Direction])},
+		weights: []float64{float64(time.Now().Unix()*100) * float64(OrderPriceSortDirection[orderInfo.Direction]), 1, 0},
 	}, id)
 	defer o.redisCli.client.Del(ctx, candidatesSet)
 	matchOrderIds, err := o.redisCli.ZRange(ctx, candidatesSet, -1)
@@ -216,9 +210,9 @@ func (o *OrderManager) getPriceFilterForLimitOrderByInfo(ctx context.Context, oI
 
 func CalculateAvailableVolume(orderInfo OrderInfo) float64 {
 	if orders.Direction(orderInfo.Direction) == orders.Direction_DIRECTION_TYPE_SELL {
-		return orderInfo.InitVolume
+		return orderInfo.InitVolume - orderInfo.FillVolume
 	}
-	return orderInfo.InitVolume * orderInfo.InitPrice
+	return orderInfo.InitVolume*orderInfo.InitPrice - orderInfo.FillPrice*orderInfo.FillVolume
 
 }
 
@@ -252,10 +246,6 @@ func (m *OrderManager) AddTransferData(ctx context.Context, transferId string, f
 		return err
 	}
 	return nil
-}
-
-func (m *OrderManager) checkOrderAvailability(ctx context.Context, orderId string) (bool, error) {
-	return m.redisCli.CheckInSet(ctx, OrdersAvailable, orderId)
 }
 
 func (s *OrderManager) TryLockOrder(ctx context.Context, id string) error {

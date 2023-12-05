@@ -39,6 +39,15 @@ func ParseCurrencyFromDirection(pair string, dir int) string {
 
 }
 
+func CalculateAmountInTransfer(orderInfo storage.OrderInfo) float64 {
+	amount := orderInfo.FillVolume
+
+	if orderInfo.Direction == int(orders.Direction_DIRECTION_TYPE_BUY) {
+		amount *= orderInfo.FillPrice
+	}
+	return amount
+}
+
 func GetLockBalanceRequest(request *orders.CreateOrderRequest, id string) *balances.LockBalanceRequest {
 	amount := request.GetInitVolume()
 

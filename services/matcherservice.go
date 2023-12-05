@@ -52,7 +52,7 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 			continue
 		}
 		availableAmountRootOrder := storage.CalculateAvailableVolume(*orderInfo)
-		if lock := s.tryLockOrderInfo(ctx, *candidateMatchingInfo); lock == false {
+		if lock := s.tryLockOrderInfo(ctx, *candidateMatchingInfo); lock == true {
 			continue
 		}
 		availableAmountCandidateOrder := storage.CalculateAvailableVolume(*candidateMatchingInfo)
@@ -60,6 +60,7 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 		availableAmountRootOrder -= fillVolumeBid
 		transferId := s.matchOrders(ctx, fillVolumeBid, orderInfo, candidateMatchingInfo)
 		s.store.AddTransferData(ctx, transferId, orderInfo.Id, candidateMatchingInfo.Id)
+		s.store.DropLimitOrderToStockBook(ctx, *candidateMatchingInfo)
 		s.store.TryUnlockOrder(ctx, candidateMatchingInfo.Id)
 		go s.sendTransferRequest(ctx, transferId, *orderInfo, *candidateMatchingInfo)
 		return nil
@@ -89,7 +90,7 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 			orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
 
 			for _, order := range orderInfo {
-				if err := s.tryLockOrderInfo(ctx, order); err == false {
+				if err := s.tryLockOrderInfo(ctx, order); err == true {
 					continue
 				}
 				s.rejectOrder(ctx, order)
@@ -105,7 +106,7 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 			orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
 
 			for _, order := range orderInfo {
-				if err := s.tryLockOrderInfo(ctx, order); err == false {
+				if err := s.tryLockOrderInfo(ctx, order); err == true {
 					continue
 				}
 
@@ -137,12 +138,12 @@ func (s *MatcherService) sendTransferRequest(ctx context.Context, transferId str
 		SenderData: &balances.TransferOptions{
 			Address:  firstOrder.ExchangeWallet,
 			Currency: util.ParseCurrencyFromDirection(firstOrder.CurrencyPair, firstOrder.Direction),
-			Amount:   firstOrder.FillVolume,
+			Amount:   util.CalculateAmountInTransfer(firstOrder),
 		},
 		RecepientData: &balances.TransferOptions{
 			Address:  secondOrder.ExchangeWallet,
 			Currency: util.ParseCurrencyFromDirection(secondOrder.CurrencyPair, secondOrder.Direction),
-			Amount:   secondOrder.FillVolume,
+			Amount:   util.CalculateAmountInTransfer(secondOrder),
 		}}
 	s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_CREATE_TRANSFER, &event)
 }
