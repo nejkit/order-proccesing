@@ -55,7 +55,7 @@ func main() {
 	}
 
 	orderService := services.NewMarketOrderService(&redisCli, ticketStore)
-	matchingService := services.NewMatcherService(&redisCli, *transferSender, *unlockSender, ticketStore)
+	matchingService := services.NewMatcherService(&redisCli, *transferSender, ticketStore)
 	api := api.NewOrderApi(orderService, &matchingService, *createOrderSender, *getOrderSender)
 	handler := handlers.NewHandler(api, ticketStore)
 	lockProcessor := transportrabbit.NewAmqpProcessor[balances.LockBalanceResponse](handler.GetHandlerForLockBalance(), util.GetParserForLockBalanceResponse())
@@ -68,7 +68,7 @@ func main() {
 		cancel()
 		return
 	}
-	balanceService := services.NewBalanceService(*lockSender, *transferSender)
+	balanceService := services.NewBalanceService(*lockSender, *transferSender, *unlockSender)
 	ticketHandler := handlers.NewTicketHandler(ticketStore, orderService, &matchingService, balanceService, *createOrderSender)
 	transferProcessor := transportrabbit.NewAmqpProcessor[balances.Transfer](handlers.GetHandlerForTransferProcessor(&matchingService), util.GetParserForTransfer())
 	transferListener, err := transportrabbit.NewListener[balances.Transfer](

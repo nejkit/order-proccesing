@@ -68,11 +68,34 @@ func (s *OrderService) ApproveOrder(ctx context.Context, response *balances.Lock
 	if err = s.orderStore.UpdateOrderData(ctx, *data); err != nil {
 		return err
 	}
-	if data.OrderType == int(orders.OrderType_ORDER_TYPE_LIMIT) {
-		s.orderStore.AddLimitOrderToStockBook(ctx, *data)
-	}
+
 	event := &orders.MatchOrderRequest{Id: data.Id}
 	s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_MATCH_ORDER, event)
+	return nil
+}
+
+func (s *OrderService) ReCreateOrder(ctx context.Context, orderInfo storage.OrderInfo) error {
+	id := uuid.NewString()
+	volume := orderInfo.InitVolume - orderInfo.FillVolume
+	order := storage.OrderInfo{
+		Id:             id,
+		CurrencyPair:   orderInfo.CurrencyPair,
+		Direction:      orderInfo.Direction,
+		InitPrice:      orderInfo.InitPrice,
+		InitVolume:     volume,
+		ExchangeWallet: orderInfo.ExchangeWallet,
+		CreationDate:   uint64(time.Now().UTC().UnixMilli()),
+		ExpirationDate: uint64(time.Now().Add(24 * time.Hour).UTC().UnixMilli()),
+		OrderState:     int(orders.OrderState_ORDER_STATE_IN_PROCESS),
+		OrderType:      int(orders.OrderType_ORDER_TYPE_LIMIT),
+	}
+	if err := s.orderStore.InsertNewOrder(ctx, order); err != nil {
+		return err
+	}
+
+	if err := s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_MATCH_ORDER, &orders.MatchOrderRequest{Id: id}); err != nil {
+		return err
+	}
 	return nil
 }
 

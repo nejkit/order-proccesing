@@ -4,13 +4,10 @@ import (
 	"context"
 	"order-processing/external/orders"
 	"order-processing/services"
-	"order-processing/storage"
 	transportrabbit "order-processing/transport_rabbit"
 	"order-processing/util"
-	"time"
 
 	logger "github.com/sirupsen/logrus"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type OrderApi struct {
@@ -50,37 +47,9 @@ func (api *OrderApi) GetOrder(ctx context.Context, request *orders.GetOrderReque
 	}
 	response := orders.GetOrderResponse{
 		Id:        request.GetId(),
-		OrderData: convertGetOrderResponse(data),
+		OrderData: util.ConvertOrderModelToProto(data),
 	}
 	logger.Infoln("Send response: ", response.String())
 
 	api.getOrderSender.SendMessage(ctx, &response)
-}
-
-func convertGetOrderResponse(orderInfo *storage.OrderInfo) *orders.OrderInfo {
-	var protoData *orders.OrderInfo
-
-	var matchingInfo []*orders.MatchingData
-	for _, mData := range orderInfo.MatchInfo {
-		matchingInfo = append(matchingInfo, &orders.MatchingData{
-			FillPrice:  float32(mData.FillPrice),
-			FillVolume: float32(mData.FillVolume),
-			Date:       timestamppb.New(time.UnixMilli(int64(mData.Date))),
-		})
-	}
-	protoData = &orders.OrderInfo{
-		Id:             orderInfo.Id,
-		CurrencyPair:   orderInfo.CurrencyPair,
-		Direction:      orders.Direction(orderInfo.Direction),
-		InitPrice:      float32(orderInfo.InitPrice),
-		InitVolume:     float32(orderInfo.InitVolume),
-		OrderType:      orders.OrderType(orderInfo.OrderType),
-		OrderState:     orders.OrderState(orderInfo.OrderState),
-		MatchInfos:     matchingInfo,
-		CreationDate:   timestamppb.New(time.UnixMilli(int64(orderInfo.CreationDate))),
-		UpdatedDate:    timestamppb.New(time.UnixMilli(int64(orderInfo.UpdatedDate))),
-		ExpirationDate: timestamppb.New(time.UnixMilli(int64(orderInfo.ExpirationDate))),
-		ExchangeWallet: orderInfo.ExchangeWallet,
-	}
-	return protoData
 }

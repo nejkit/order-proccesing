@@ -178,3 +178,7 @@ func (c *RedisClient) PrepareIndexWithLimitOption(ctx context.Context, options L
 	}
 	return &indexName, nil
 }
+
+func (c RedisClient) DelKey(ctx context.Context, id string) {
+	c.client.Del(ctx, id)
+}

@@ -105,3 +105,16 @@ func (s *TicketStorage) tryUnlockTicket(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+func (s *TicketStorage) DeleteTicket(ctx context.Context, id string) error {
+
+	if err := s.tryLockTicket(ctx, id); err != nil {
+		return err
+	}
+	s.client.DelKey(ctx, TicketPrefix+id)
+	if err := s.tryUnlockTicket(ctx, id); err != nil {
+		return nil
+	}
+
+	return nil
+}

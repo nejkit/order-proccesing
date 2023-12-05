@@ -16,13 +16,15 @@ var (
 
 type BalanceService struct {
 	lockSender     transportrabbit.AmqpSender
+	unlockSender   transportrabbit.AmqpSender
 	transferSender transportrabbit.AmqpSender
 }
 
 func NewBalanceService(
 	lockSender transportrabbit.AmqpSender,
-	transferSender transportrabbit.AmqpSender) BalanceService {
-	return BalanceService{lockSender: lockSender, transferSender: transferSender}
+	transferSender transportrabbit.AmqpSender,
+	unlockSender transportrabbit.AmqpSender) BalanceService {
+	return BalanceService{lockSender: lockSender, transferSender: transferSender, unlockSender: unlockSender}
 }
 
 func (s *BalanceService) LockBalance(ctx context.Context, request *balances.LockBalanceRequest) {
@@ -31,4 +33,8 @@ func (s *BalanceService) LockBalance(ctx context.Context, request *balances.Lock
 
 func (s *BalanceService) CreateTransfer(ctx context.Context, request *balances.CreateTransferRequest) {
 	s.transferSender.SendMessage(ctx, request)
+}
+
+func (s *BalanceService) UnLockBalance(ctx context.Context, request *balances.UnLockBalanceRequest) {
+	s.unlockSender.SendMessage(ctx, request)
 }
