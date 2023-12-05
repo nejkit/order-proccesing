@@ -153,7 +153,7 @@ func (o *OrderManager) UpdateOrderData(ctx context.Context, orderInfo OrderInfo)
 		o.redisCli.DeleteFromSet(ctx, OrdersAvailable, orderInfo.Id)
 	}
 
-	orderInfo.UpdatedDate = uint64(time.Now().Unix())
+	orderInfo.UpdatedDate = uint64(time.Now().UTC().UnixMilli())
 
 	data, err := json.Marshal(orderInfo)
 	if err != nil {

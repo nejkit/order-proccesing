@@ -55,7 +55,7 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 			Id:       uuid.NewString(),
 			Address:  orderInfo.ExchangeWallet,
 			Currency: util.ParseCurrencyFromDirection(orderInfo.CurrencyPair, orderInfo.Direction),
-			Amount:   float32(amount),
+			Amount:   amount,
 		})
 		err := s.store.UpdateOrderData(ctx, *orderInfo)
 		logger.Errorln("Order was rejected")
@@ -192,12 +192,12 @@ func (s *MatcherService) sendTransferRequest(ctx context.Context, transferId str
 		SenderData: &balances.TransferOptions{
 			Address:  firstOrder.ExchangeWallet,
 			Currency: util.ParseCurrencyFromDirection(firstOrder.CurrencyPair, firstOrder.Direction),
-			Amount:   float32(matchInfoFirst.FillVolume),
+			Amount:   matchInfoFirst.FillVolume,
 		},
 		RecepientData: &balances.TransferOptions{
 			Address:  secondOrder.ExchangeWallet,
 			Currency: util.ParseCurrencyFromDirection(secondOrder.CurrencyPair, secondOrder.Direction),
-			Amount:   float32(matchInfoSecond.FillVolume),
+			Amount:   matchInfoSecond.FillVolume,
 		}}
 	s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_CREATE_TRANSFER, &event)
 }

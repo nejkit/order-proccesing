@@ -7,8 +7,10 @@ import (
 	"order-processing/storage"
 	transportrabbit "order-processing/transport_rabbit"
 	"order-processing/util"
+	"time"
 
 	logger "github.com/sirupsen/logrus"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type OrderApi struct {
@@ -29,7 +31,7 @@ func (api *OrderApi) CreateOrder(ctx context.Context, request *orders.CreateOrde
 			ErorCode: util.MapError(err),
 			Message:  err.Error(),
 		}})
-		
+
 	}
 
 	api.createOrderSender.SendMessage(ctx, &orders.CreateOrderResponse{Id: request.GetId(), OrderId: *oid})
@@ -63,7 +65,7 @@ func convertGetOrderResponse(orderInfo *storage.OrderInfo) *orders.OrderInfo {
 		matchingInfo = append(matchingInfo, &orders.MatchingData{
 			FillPrice:  float32(mData.FillPrice),
 			FillVolume: float32(mData.FillVolume),
-			Date:       mData.Date,
+			Date:       timestamppb.New(time.UnixMilli(int64(mData.Date))),
 		})
 	}
 	protoData = &orders.OrderInfo{
@@ -75,9 +77,9 @@ func convertGetOrderResponse(orderInfo *storage.OrderInfo) *orders.OrderInfo {
 		OrderType:      orders.OrderType(orderInfo.OrderType),
 		OrderState:     orders.OrderState(orderInfo.OrderState),
 		MatchInfos:     matchingInfo,
-		CreationDate:   orderInfo.CreationDate,
-		UpdatedDate:    orderInfo.UpdatedDate,
-		ExpirationDate: orderInfo.ExpirationDate,
+		CreationDate:   timestamppb.New(time.UnixMilli(int64(orderInfo.CreationDate))),
+		UpdatedDate:    timestamppb.New(time.UnixMilli(int64(orderInfo.UpdatedDate))),
+		ExpirationDate: timestamppb.New(time.UnixMilli(int64(orderInfo.ExpirationDate))),
 		ExchangeWallet: orderInfo.ExchangeWallet,
 	}
 	return protoData

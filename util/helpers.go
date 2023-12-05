@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	koeficientMap = map[orders.OrderType]float32{
+	koeficientMap = map[orders.OrderType]float64{
 		orders.OrderType_ORDER_TYPE_LIMIT:  1,
 		orders.OrderType_ORDER_TYPE_MARKET: 1.15,
 	}
