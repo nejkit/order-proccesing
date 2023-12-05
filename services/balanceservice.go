@@ -5,9 +5,6 @@ import (
 	"order-processing/external/balances"
 	"order-processing/external/orders"
 	transportrabbit "order-processing/transport_rabbit"
-	"order-processing/util"
-
-	"github.com/google/uuid"
 )
 
 var (
@@ -28,23 +25,8 @@ func NewBalanceService(
 	return BalanceService{lockSender: lockSender, transferSender: transferSender}
 }
 
-func (s *BalanceService) LockBalance(ctx context.Context, request *orders.CreateOrderRequest) {
-	amount := request.GetInitVolume()
-
-	if request.GetDirection() == orders.Direction_DIRECTION_TYPE_BUY {
-		multiplier, _ := koeficientMap[request.GetOrderType()]
-		amount = (request.GetInitPrice() * request.GetInitVolume() * multiplier)
-	}
-
-	id := uuid.NewString()
-	cur := util.ParseCurrencyFromDirection(request.GetCurrencyPair(), int(request.GetDirection()))
-	event := &balances.LockBalanceRequest{
-		Id:       id,
-		Address:  request.GetExchangeWallet(),
-		Currency: cur,
-		Amount:   amount,
-	}
-	s.lockSender.SendMessage(ctx, event)
+func (s *BalanceService) LockBalance(ctx context.Context, request *balances.LockBalanceRequest) {
+	s.lockSender.SendMessage(ctx, request)
 }
 
 func (s *BalanceService) CreateTransfer(ctx context.Context, request *balances.CreateTransferRequest) {

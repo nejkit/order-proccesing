@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"order-processing/external/tickets"
+	"order-processing/tickets/dto"
 
 	"github.com/google/uuid"
 	logger "github.com/sirupsen/logrus"
@@ -37,7 +38,8 @@ func (s *TicketStorage) SaveTicketForOperation(ctx context.Context, ticketType t
 		OperationType: ticketType,
 		Data:          data,
 	}
-	bytes, err := json.Marshal(ticket)
+	ticketModel := dto.MapToModel(ticket)
+	bytes, err := json.Marshal(ticketModel)
 	result, err := s.client.SetNXKey(ctx, TicketPrefix+ticketId, string(bytes))
 	if result {
 		logger.Infoln("Success create ticket with id: ", ticketId)
@@ -55,10 +57,11 @@ func (s *TicketStorage) GetTicketById(ctx context.Context, id string) (*tickets.
 	if err != nil {
 		return nil, err
 	}
-	var ticket *tickets.Ticket
-	if err = json.Unmarshal([]byte(data), ticket); err != nil {
+	var ticketModel dto.TicketModel
+	if err = json.Unmarshal([]byte(data), &ticketModel); err != nil {
 		return nil, err
 	}
+	ticket := dto.MapToProto(ticketModel)
 
 	return ticket, nil
 }
@@ -72,7 +75,8 @@ func (s *TicketStorage) UpdateTicket(ctx context.Context, ticketInfo *tickets.Ti
 	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(ticketInfo)
+	ticketModel := dto.MapToModel(ticketInfo)
+	data, err := json.Marshal(ticketModel)
 	if err != nil {
 		return err
 	}
@@ -89,7 +93,7 @@ func (s *TicketStorage) tryLockTicket(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if exists {
+	if !exists {
 		return errors.New("ResourceIsBlocked")
 	}
 	return nil

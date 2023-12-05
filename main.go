@@ -69,7 +69,7 @@ func main() {
 		return
 	}
 	balanceService := services.NewBalanceService(*lockSender, *transferSender)
-	ticketHandler := handlers.NewTicketHandler(ticketStore, orderService, &matchingService, balanceService)
+	ticketHandler := handlers.NewTicketHandler(ticketStore, orderService, &matchingService, balanceService, *createOrderSender)
 	transferProcessor := transportrabbit.NewAmqpProcessor[balances.Transfer](handlers.GetHandlerForTransferProcessor(&matchingService), util.GetParserForTransfer())
 	transferListener, err := transportrabbit.NewListener[balances.Transfer](
 		ctx,

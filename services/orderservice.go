@@ -43,7 +43,12 @@ func (s *OrderService) CreateOrder(ctx context.Context, request *orders.CreateOr
 	if err != nil {
 		return nil, err
 	}
-	s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_LOCK_BALANCE, request)
+	response := &orders.CreateOrderResponse{
+		Id:      request.Id,
+		OrderId: oid,
+	}
+	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_CREATE_ORDER_RESPONSE, response)
+	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_LOCK_BALANCE, util.GetLockBalanceRequest(request, oid))
 	return &oid, nil
 }
 

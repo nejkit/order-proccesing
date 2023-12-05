@@ -9,20 +9,27 @@ import (
 	"order-processing/external/tickets"
 	"order-processing/services"
 	"order-processing/storage"
+	transportrabbit "order-processing/transport_rabbit"
 
 	logger "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
 
 type TicketHandler struct {
-	ticketStore     storage.TicketStorage
-	orderService    services.OrderService
-	matchingService *services.MatcherService
-	balanceService  services.BalanceService
+	ticketStore         storage.TicketStorage
+	orderService        services.OrderService
+	matchingService     *services.MatcherService
+	balanceService      services.BalanceService
+	orderCreationSender transportrabbit.AmqpSender
 }
 
-func NewTicketHandler(ticketStore storage.TicketStorage, orderService services.OrderService, matchingService *services.MatcherService, balanceService services.BalanceService) TicketHandler {
-	return TicketHandler{ticketStore: ticketStore, orderService: orderService, balanceService: balanceService, matchingService: matchingService}
+func NewTicketHandler(
+	ticketStore storage.TicketStorage,
+	orderService services.OrderService,
+	matchingService *services.MatcherService,
+	balanceService services.BalanceService,
+	ocs transportrabbit.AmqpSender) TicketHandler {
+	return TicketHandler{ticketStore: ticketStore, orderService: orderService, balanceService: balanceService, matchingService: matchingService, orderCreationSender: ocs}
 }
 
 func (h *TicketHandler) Handle(ctx context.Context) {
@@ -55,9 +62,9 @@ func (h *TicketHandler) Handle(ctx context.Context) {
 				}
 				go h.orderService.CreateOrder(ctx, request)
 			case tickets.OperationType_OPERATION_TYPE_LOCK_BALANCE:
-				request := &orders.CreateOrderRequest{}
+				request := &balances.LockBalanceRequest{}
 				if err := proto.Unmarshal(ticketInfo.Data, request); err != nil {
-					logger.Errorln(err.Error())
+					logger.Errorln("Error while parse lock balance request: ", err.Error())
 					continue
 				}
 				go h.balanceService.LockBalance(ctx, request)
@@ -89,6 +96,13 @@ func (h *TicketHandler) Handle(ctx context.Context) {
 					continue
 				}
 				go h.matchingService.HandleTransfersResponse(ctx, request)
+			case tickets.OperationType_OPERATION_TYPE_CREATE_ORDER_RESPONSE:
+				request := &orders.CreateOrderResponse{}
+				if err := proto.Unmarshal(ticketInfo.Data, request); err != nil {
+					logger.Errorln(err.Error())
+					continue
+				}
+				go h.orderCreationSender.SendMessage(ctx, request)
 			default:
 				logger.Warningln("Ticket operation ", ticketInfo.OperationType, " unsupported, skipping...")
 				continue
