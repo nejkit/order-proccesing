@@ -51,13 +51,12 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 		if err != nil {
 			continue
 		}
-		availableAmountRootOrder := storage.CalculateAvailableVolume(*orderInfo)
+		availableAmountRootOrder := s.calculateAmountMatching(*orderInfo)
 		if lock := s.tryLockOrderInfo(ctx, *candidateMatchingInfo); lock == true {
 			continue
 		}
-		availableAmountCandidateOrder := storage.CalculateAvailableVolume(*candidateMatchingInfo)
+		availableAmountCandidateOrder := s.calculateAmountMatching(*candidateMatchingInfo)
 		fillVolumeBid := util.Min(availableAmountRootOrder, availableAmountCandidateOrder)
-		availableAmountRootOrder -= fillVolumeBid
 		transferId := s.matchOrders(ctx, fillVolumeBid, orderInfo, candidateMatchingInfo)
 		s.store.AddTransferData(ctx, transferId, orderInfo.Id, candidateMatchingInfo.Id)
 		s.store.DropLimitOrderToStockBook(ctx, *candidateMatchingInfo)
@@ -97,7 +96,6 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 				s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_UNLOCK_BALANCE, util.GetUnLockBalanceRequest(&order))
 				s.store.TryUnlockOrder(ctx, order.Id)
 			}
-			go s.store.DeleteTransferInfo(ctx, transfer.GetId())
 
 		}
 	case balances.TransferState_TRANSFER_STATE_DONE:
@@ -106,15 +104,18 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 			orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
 
 			for _, order := range orderInfo {
+				logger.Infoln("Complete order with id: ", order.Id)
 				if err := s.tryLockOrderInfo(ctx, order); err == true {
 					continue
 				}
-
+				if order.OrderState == int(orders.OrderState_ORDER_STATE_PART_FILL) {
+					go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_RECREATE_ORDER, util.ConvertOrderModelToProto(&order))
+				}
 				order.OrderState = int(orders.OrderState_ORDER_STATE_DONE)
 				s.store.UpdateOrderData(ctx, order)
 				s.store.TryUnlockOrder(ctx, order.Id)
 			}
-			go s.store.DeleteTransferInfo(ctx, transfer.GetId())
+
 		}
 	}
 }
@@ -123,12 +124,7 @@ func buildMatchingInfo(price float64, buyVolume float64, transferId string, orde
 	orderInfo.TransferId = transferId
 	orderInfo.MatchingDate = uint64(time.Now().UTC().UnixMilli())
 	orderInfo.FillPrice = price
-
-	if orders.Direction(orderInfo.Direction) == orders.Direction_DIRECTION_TYPE_BUY {
-		orderInfo.FillVolume = buyVolume / price
-
-	}
-	orderInfo.FillVolume = buyVolume
+	orderInfo.FillVolume = buyVolume / price
 
 }
 
@@ -174,4 +170,8 @@ func (s *MatcherService) rejectOrder(ctx context.Context, orderInfo storage.Orde
 	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_UNLOCK_BALANCE, util.GetUnLockBalanceRequest(&orderInfo))
 	orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_REJECT)
 	s.store.UpdateOrderData(ctx, orderInfo)
+}
+
+func (s *MatcherService) calculateAmountMatching(orderInfo storage.OrderInfo) float64 {
+	return orderInfo.InitPrice * orderInfo.InitVolume
 }

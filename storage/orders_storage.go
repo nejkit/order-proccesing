@@ -217,14 +217,21 @@ func CalculateAvailableVolume(orderInfo OrderInfo) float64 {
 }
 
 func (m *OrderManager) GetOrdersByTransferId(ctx context.Context, transferId string) ([]OrderInfo, error) {
-	ids, err := m.redisCli.GetFromSet(ctx, Transfers)
+	ids, err := m.redisCli.GetFromSet(ctx, Transfers+transferId)
+
 	if err != nil {
+		logger.Errorln("Error while get transfer data: ", err.Error())
 		return nil, errors.New(statics.ErrorOrderNotFound)
 	}
+	logger.Infoln("Orders from transfer: ", ids)
 	var result []OrderInfo
 	for _, id := range ids {
+		if id == "-1" {
+			continue
+		}
 		order, err := m.GetOrderById(ctx, id)
 		if err != nil {
+			logger.Errorln("While get order data, error: ", err.Error())
 			return nil, err
 		}
 		result = append(result, *order)
@@ -233,7 +240,7 @@ func (m *OrderManager) GetOrdersByTransferId(ctx context.Context, transferId str
 }
 
 func (m *OrderManager) DeleteTransferInfo(ctx context.Context, transferId string) {
-	m.redisCli.DeleteFromSet(ctx, Transfers, transferId)
+	m.redisCli.DelKey(ctx, Transfers+transferId)
 }
 
 func (m *OrderManager) AddTransferData(ctx context.Context, transferId string, firstOrder string, secondOrder string) error {

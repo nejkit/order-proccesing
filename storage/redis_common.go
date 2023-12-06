@@ -168,13 +168,13 @@ func (c *RedisClient) DelKeyWithValue(ctx context.Context, key string, value str
 }
 
 func (c *RedisClient) PrepareIndexWithLimitOption(ctx context.Context, options LimitOptions) (*string, error) {
-	indexName := "orders:limit_price:" + fmt.Sprintf("%f", options.minPrice) + fmt.Sprintf("%f", options.maxPrice)
+	indexName := "orders:limit_price:" + fmt.Sprintf("%f", options.minPrice) + ":" + fmt.Sprintf("%f", options.maxPrice)
 	c.client.ZInterStore(ctx, indexName, &redisLib.ZStore{
 		Keys: []string{OrdersPrice},
 	})
-	c.client.ZRemRangeByScore(ctx, indexName, "-inf", fmt.Sprintf("%f", options.minPrice))
+	c.client.ZRemRangeByScore(ctx, indexName, "-inf", fmt.Sprintf("%f", options.minPrice-0.01))
 	if options.maxPrice > 0 {
-		c.client.ZRemRangeByScore(ctx, indexName, fmt.Sprintf("%f", options.maxPrice), "+inf")
+		c.client.ZRemRangeByScore(ctx, indexName, fmt.Sprintf("%f", options.maxPrice+0.01), "+inf")
 	}
 	return &indexName, nil
 }

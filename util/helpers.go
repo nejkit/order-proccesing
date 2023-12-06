@@ -52,8 +52,8 @@ func GetLockBalanceRequest(request *orders.CreateOrderRequest, id string) *balan
 	amount := request.GetInitVolume()
 
 	if request.GetDirection() == orders.Direction_DIRECTION_TYPE_BUY {
-		multiplier, _ := koeficientMap[request.GetOrderType()]
-		amount = multiplier * request.InitPrice * request.InitVolume
+
+		amount = request.InitPrice * request.InitVolume
 	}
 	cur := ParseCurrencyFromDirection(request.CurrencyPair, int(request.Direction))
 	event := &balances.LockBalanceRequest{
@@ -68,11 +68,10 @@ func GetLockBalanceRequest(request *orders.CreateOrderRequest, id string) *balan
 }
 
 func GetUnLockBalanceRequest(orderInfo *storage.OrderInfo) *balances.UnLockBalanceRequest {
-	amount := orderInfo.InitVolume
+	amount := orderInfo.InitVolume - orderInfo.FillVolume
 
 	if orderInfo.Direction == int(orders.Direction_DIRECTION_TYPE_BUY) {
-		multiplier, _ := koeficientMap[orders.OrderType(orderInfo.OrderType)]
-		amount = multiplier * orderInfo.InitPrice * orderInfo.InitVolume
+		amount = orderInfo.InitPrice*orderInfo.InitVolume - orderInfo.FillPrice*orderInfo.FillVolume
 	}
 	cur := ParseCurrencyFromDirection(orderInfo.CurrencyPair, orderInfo.Direction)
 	event := &balances.UnLockBalanceRequest{
@@ -120,7 +119,7 @@ func ConvertProtoOrderToModel(orderInfo *orders.OrderInfo) storage.OrderInfo {
 		OrderType:    int(orderInfo.OrderType),
 		OrderState:   int(orderInfo.OrderState),
 		MatchingData: storage.MatchingData{
-			FillVolume:   orderInfo.FillPrice,
+			FillVolume:   orderInfo.FillVolume,
 			FillPrice:    orderInfo.FillPrice,
 			MatchingDate: uint64(orderInfo.Date.AsTime().UnixMilli()),
 			TransferId:   orderInfo.TransferId,

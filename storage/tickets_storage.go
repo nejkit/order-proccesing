@@ -42,7 +42,6 @@ func (s *TicketStorage) SaveTicketForOperation(ctx context.Context, ticketType t
 	bytes, err := json.Marshal(ticketModel)
 	result, err := s.client.SetNXKey(ctx, TicketPrefix+ticketId, string(bytes))
 	if result {
-		logger.Infoln("Success create ticket with id: ", ticketId)
 		return nil
 	}
 	if err != nil {

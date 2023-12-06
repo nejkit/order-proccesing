@@ -10,6 +10,7 @@ import (
 	"order-processing/services"
 	"order-processing/storage"
 	transportrabbit "order-processing/transport_rabbit"
+	"order-processing/util"
 
 	logger "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
@@ -110,7 +111,13 @@ func (h *TicketHandler) Handle(ctx context.Context) {
 					continue
 				}
 				go h.handleUnlockBalance(ctx, request, ticketId)
-
+			case tickets.OperationType_OPERATION_TYPE_RECREATE_ORDER:
+				request := &orders.OrderInfo{}
+				if err := proto.Unmarshal(ticketInfo.Data, request); err != nil {
+					logger.Errorln(err.Error())
+					continue
+				}
+				go h.handleReCreateOrder(ctx, request, ticketId)
 			default:
 				logger.Warningln("Ticket operation ", ticketInfo.OperationType, " unsupported, skipping...")
 				continue
@@ -165,5 +172,10 @@ func (h *TicketHandler) handleTransfer(ctx context.Context, request *balances.Tr
 
 func (h *TicketHandler) handleUnlockBalance(ctx context.Context, request *balances.UnLockBalanceRequest, ticketId string) {
 	h.balanceService.UnLockBalance(ctx, request)
+	//h.ticketStore.DeleteTicket(ctx, ticketId)
+}
+
+func (h *TicketHandler) handleReCreateOrder(ctx context.Context, request *orders.OrderInfo, ticketId string) {
+	h.orderService.ReCreateOrder(ctx, util.ConvertProtoOrderToModel(request))
 	//h.ticketStore.DeleteTicket(ctx, ticketId)
 }
