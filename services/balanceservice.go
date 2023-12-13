@@ -27,14 +27,23 @@ func NewBalanceService(
 	return BalanceService{lockSender: lockSender, transferSender: transferSender, unlockSender: unlockSender}
 }
 
-func (s *BalanceService) LockBalance(ctx context.Context, request *balances.LockBalanceRequest) {
-	s.lockSender.SendMessage(ctx, request)
+func (s *BalanceService) LockBalance(ctx context.Context, request *balances.LockBalanceRequest) error {
+	if err := s.lockSender.SendMessage(ctx, request); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (s *BalanceService) CreateTransfer(ctx context.Context, request *balances.CreateTransferRequest) {
-	s.transferSender.SendMessage(ctx, request)
+func (s *BalanceService) CreateTransfer(ctx context.Context, request *balances.CreateTransferRequest) error {
+	if err := s.transferSender.SendMessage(ctx, request); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (s *BalanceService) UnLockBalance(ctx context.Context, request *balances.UnLockBalanceRequest) {
-	s.unlockSender.SendMessage(ctx, request)
+func (s *BalanceService) UnLockBalance(ctx context.Context, request *balances.UnLockBalanceRequest) error {
+	if err := s.unlockSender.SendMessage(ctx, request); err != nil {
+		return err
+	}
+	return nil
 }

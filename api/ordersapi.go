@@ -21,20 +21,6 @@ func NewOrderApi(oserv services.OrderService, matcherserv *services.MatcherServi
 	return OrderApi{ordersServ: oserv, createOrderSender: cos, getOrderSender: gos, matcherServ: matcherserv}
 }
 
-func (api *OrderApi) CreateOrder(ctx context.Context, request *orders.CreateOrderRequest) {
-	oid, err := api.ordersServ.CreateOrder(ctx, request)
-	if err != nil {
-		go api.createOrderSender.SendMessage(ctx, &orders.CreateOrderResponse{Id: request.GetId(), Error: &orders.OrderErrorMessage{
-			ErorCode: util.MapError(err),
-			Message:  err.Error(),
-		}})
-
-	}
-
-	api.createOrderSender.SendMessage(ctx, &orders.CreateOrderResponse{Id: request.GetId(), OrderId: *oid})
-	go api.matcherServ.MatchOrderById(ctx, *oid)
-}
-
 func (api *OrderApi) GetOrder(ctx context.Context, request *orders.GetOrderRequest) {
 	data, err := api.ordersServ.GetOrder(ctx, request)
 

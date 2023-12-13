@@ -23,16 +23,21 @@ func main() {
 	logger.SetLevel(logger.InfoLevel)
 	ctxRoot := context.Background()
 	ctx, cancel := context.WithCancel(ctxRoot)
-	rmqFactory := transportrabbit.NewFactory("amqp://admin:admin@rabbitmq:5672")
+	rmqFactory := transportrabbit.NewFactory("amqp://admin:admin@localhost:5672")
 	rmqFactory.InitRmq()
-	redisCli := storage.NewOrderManager("redis:6379")
-	ticketStore := storage.NewTicketStorage(storage.GetNewRedisCli("redis:6379"))
+	redisCli := storage.NewOrderManager("localhost:6379")
+	ticketStore := storage.NewTicketStorage(storage.GetNewRedisCli("localhost:6379"))
 	lockSender, err := rmqFactory.NewSender(ctx, statics.ExNameBalances, statics.RkLockBalanceRequest)
 	if err != nil {
 		cancel()
 		return
 	}
 	createOrderSender, err := rmqFactory.NewSender(ctx, statics.ExNameOrders, statics.RkCreateOrderResponse)
+	if err != nil {
+		cancel()
+		return
+	}
+	orderInfoSender, err := rmqFactory.NewSender(ctx, statics.ExNameOrders, statics.RkOrderInfo)
 	if err != nil {
 		cancel()
 		return
@@ -53,6 +58,11 @@ func main() {
 		cancel()
 		return
 	}
+	deleteOrderSender, err := rmqFactory.NewSender(ctx, statics.ExNameOrders, statics.RkDeleteOrderResponse)
+	if err != nil {
+		cancel()
+		return
+	}
 
 	orderService := services.NewMarketOrderService(&redisCli, ticketStore)
 	matchingService := services.NewMatcherService(&redisCli, *transferSender, ticketStore)
@@ -68,8 +78,14 @@ func main() {
 		cancel()
 		return
 	}
+	deleteOrderProcessor := transportrabbit.NewAmqpProcessor[orders.DeleteOrderRequest](handler.GetHandlerForDeleteOrder(), util.GetParserForDeleteOrderRequest())
+	deleteOrderListener, err := transportrabbit.NewListener[orders.DeleteOrderRequest](ctx, rmqFactory, statics.QueueDeleteOrderRequest, deleteOrderProcessor)
+	if err != nil {
+		cancel()
+		return
+	}
 	balanceService := services.NewBalanceService(*lockSender, *transferSender, *unlockSender)
-	ticketHandler := handlers.NewTicketHandler(ticketStore, orderService, &matchingService, balanceService, *createOrderSender)
+	ticketHandler := handlers.NewTicketHandler(ticketStore, orderService, &matchingService, balanceService, *createOrderSender, *orderInfoSender, *deleteOrderSender)
 	transferProcessor := transportrabbit.NewAmqpProcessor[balances.Transfer](handlers.GetHandlerForTransferProcessor(&matchingService), util.GetParserForTransfer())
 	transferListener, err := transportrabbit.NewListener[balances.Transfer](
 		ctx,
@@ -102,6 +118,7 @@ func main() {
 	go createOrderListener.Run(ctx)
 	go getOrderListener.Run(ctx)
 	go transferListener.Run(ctx)
+	go deleteOrderListener.Run(ctx)
 
 	exit := make(chan os.Signal, 1)
 	for {

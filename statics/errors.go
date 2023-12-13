@@ -6,4 +6,5 @@ const (
 	ErrorMessageNotFound  = "MessageNotFound"
 	ErrorNotEnoughBalance = "NotEnoughBalance"
 	ErrorBalanceNotExists = "NotExistsBalance"
+	ErrorResourceLocked   = "ResourceLocked"
 )

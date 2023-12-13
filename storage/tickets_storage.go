@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	TicketPrefix = "ticket:"
+	TicketPrefix = "processing:ticket:"
 )
 
 type TicketStorage struct {

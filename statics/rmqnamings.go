@@ -17,4 +17,10 @@ const (
 	RkGetOrderRequest            = "r.request.#.GetOrderRequest.#"
 	RkGetOrderResponse           = "r.response.#.GetOrderResponse.#"
 	RkUnLockBalanceRequest       = "r.#.request.UnLockBalanceRequest.#"
+	QueueOrderInfo               = "q.orders.OrderInfo"
+	RkOrderInfo                  = "r.response.#.OrderInfo.#"
+	QueueDeleteOrderRequest      = "q.orders.request.DeleteOrderRequest"
+	QueueDeleteOrderResponse     = "q.orders.response.DeleteOrderResponse"
+	RkDeleteOrderRequest         = "r.request.#.DeleteOrderRequest.#"
+	RkDeleteOrderResponse        = "r.response.#.DeleteOrderResponse.#"
 )

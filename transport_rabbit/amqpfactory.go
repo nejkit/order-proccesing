@@ -37,11 +37,14 @@ func (f *AmqpFactory) InitRmq() {
 	ch.QueueDeclare(statics.QueueNameCreateOrderResponse, true, false, false, false, nil)
 	ch.QueueDeclare(statics.QueueNameGetOrderRequest, true, false, false, false, nil)
 	ch.QueueDeclare(statics.QueueNameGetOrderResponse, true, false, false, false, nil)
+	ch.QueueDeclare(statics.QueueDeleteOrderRequest, true, false, false, false, nil)
+	ch.QueueDeclare(statics.QueueDeleteOrderResponse, true, false, false, false, nil)
 	ch.QueueBind(statics.QueueNameGetOrderResponse, statics.RkGetOrderResponse, statics.ExNameOrders, false, nil)
 	ch.QueueBind(statics.QueueNameGetOrderRequest, statics.RkGetOrderRequest, statics.ExNameOrders, false, nil)
 	ch.QueueBind(statics.QueueNameCreateOrderRequest, statics.RkCreateOrderRequest, statics.ExNameOrders, false, nil)
 	ch.QueueBind(statics.QueueNameCreateOrderResponse, statics.RkCreateOrderResponse, statics.ExNameOrders, false, nil)
-
+	ch.QueueBind(statics.QueueDeleteOrderRequest, statics.RkDeleteOrderRequest, statics.ExNameOrders, false, nil)
+	ch.QueueBind(statics.QueueDeleteOrderResponse, statics.RkDeleteOrderResponse, statics.ExNameOrders, false, nil)
 }
 
 func (f *AmqpFactory) getRmqChannel() (*amqp091.Channel, error) {

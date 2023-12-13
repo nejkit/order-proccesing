@@ -338,6 +338,116 @@ func (x *OrderInfo) GetExchangeWallet() string {
 	return ""
 }
 
+type DeleteOrderRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id      string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	OrderId string `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+}
+
+func (x *DeleteOrderRequest) Reset() {
+	*x = DeleteOrderRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_common_proto_msgTypes[3]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *DeleteOrderRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteOrderRequest) ProtoMessage() {}
+
+func (x *DeleteOrderRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[3]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteOrderRequest.ProtoReflect.Descriptor instead.
+func (*DeleteOrderRequest) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *DeleteOrderRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DeleteOrderRequest) GetOrderId() string {
+	if x != nil {
+		return x.OrderId
+	}
+	return ""
+}
+
+type DeleteOrderResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Id           string             `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	ErrorMessage *OrderErrorMessage `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
+}
+
+func (x *DeleteOrderResponse) Reset() {
+	*x = DeleteOrderResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_common_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *DeleteOrderResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteOrderResponse) ProtoMessage() {}
+
+func (x *DeleteOrderResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteOrderResponse.ProtoReflect.Descriptor instead.
+func (*DeleteOrderResponse) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DeleteOrderResponse) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DeleteOrderResponse) GetErrorMessage() *OrderErrorMessage {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return nil
+}
+
 type GetOrderRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -350,7 +460,7 @@ type GetOrderRequest struct {
 func (x *GetOrderRequest) Reset() {
 	*x = GetOrderRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_common_proto_msgTypes[3]
+		mi := &file_common_proto_msgTypes[5]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -363,7 +473,7 @@ func (x *GetOrderRequest) String() string {
 func (*GetOrderRequest) ProtoMessage() {}
 
 func (x *GetOrderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[3]
+	mi := &file_common_proto_msgTypes[5]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -376,7 +486,7 @@ func (x *GetOrderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrderRequest.ProtoReflect.Descriptor instead.
 func (*GetOrderRequest) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{3}
+	return file_common_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *GetOrderRequest) GetId() string {
@@ -405,7 +515,7 @@ type GetOrderResponse struct {
 func (x *GetOrderResponse) Reset() {
 	*x = GetOrderResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_common_proto_msgTypes[4]
+		mi := &file_common_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -418,7 +528,7 @@ func (x *GetOrderResponse) String() string {
 func (*GetOrderResponse) ProtoMessage() {}
 
 func (x *GetOrderResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[4]
+	mi := &file_common_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -431,7 +541,7 @@ func (x *GetOrderResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetOrderResponse.ProtoReflect.Descriptor instead.
 func (*GetOrderResponse) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{4}
+	return file_common_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *GetOrderResponse) GetId() string {
@@ -459,7 +569,7 @@ type MatchOrderRequest struct {
 func (x *MatchOrderRequest) Reset() {
 	*x = MatchOrderRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_common_proto_msgTypes[5]
+		mi := &file_common_proto_msgTypes[7]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -472,7 +582,7 @@ func (x *MatchOrderRequest) String() string {
 func (*MatchOrderRequest) ProtoMessage() {}
 
 func (x *MatchOrderRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[5]
+	mi := &file_common_proto_msgTypes[7]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -485,7 +595,7 @@ func (x *MatchOrderRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MatchOrderRequest.ProtoReflect.Descriptor instead.
 func (*MatchOrderRequest) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{5}
+	return file_common_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *MatchOrderRequest) GetId() string {
@@ -569,20 +679,30 @@ var file_common_proto_rawDesc = []byte{
 	0x73, 0x74, 0x61, 0x6d, 0x70, 0x52, 0x0e, 0x65, 0x78, 0x70, 0x69, 0x72, 0x61, 0x74, 0x69, 0x6f,
 	0x6e, 0x44, 0x61, 0x74, 0x65, 0x12, 0x27, 0x0a, 0x0f, 0x65, 0x78, 0x63, 0x68, 0x61, 0x6e, 0x67,
 	0x65, 0x5f, 0x77, 0x61, 0x6c, 0x6c, 0x65, 0x74, 0x18, 0x0f, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0e,
-	0x65, 0x78, 0x63, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x57, 0x61, 0x6c, 0x6c, 0x65, 0x74, 0x22, 0x3c,
-	0x0a, 0x0f, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
-	0x74, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x69,
-	0x64, 0x12, 0x19, 0x0a, 0x08, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x5f, 0x69, 0x64, 0x18, 0x02, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x07, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x49, 0x64, 0x22, 0x54, 0x0a, 0x10,
-	0x47, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
-	0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x69, 0x64,
-	0x12, 0x30, 0x0a, 0x0a, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x5f, 0x64, 0x61, 0x74, 0x61, 0x18, 0x02,
-	0x20, 0x01, 0x28, 0x0b, 0x32, 0x11, 0x2e, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x2e, 0x4f, 0x72,
-	0x64, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x09, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x44, 0x61,
-	0x74, 0x61, 0x22, 0x23, 0x0a, 0x11, 0x4d, 0x61, 0x74, 0x63, 0x68, 0x4f, 0x72, 0x64, 0x65, 0x72,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20,
-	0x01, 0x28, 0x09, 0x52, 0x02, 0x69, 0x64, 0x42, 0x09, 0x5a, 0x07, 0x2f, 0x6f, 0x72, 0x64, 0x65,
-	0x72, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x65, 0x78, 0x63, 0x68, 0x61, 0x6e, 0x67, 0x65, 0x57, 0x61, 0x6c, 0x6c, 0x65, 0x74, 0x22, 0x3f,
+	0x0a, 0x12, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09,
+	0x52, 0x02, 0x69, 0x64, 0x12, 0x19, 0x0a, 0x08, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x5f, 0x69, 0x64,
+	0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x49, 0x64, 0x22,
+	0x5e, 0x0a, 0x13, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x02, 0x69, 0x64, 0x12, 0x37, 0x0a, 0x0d, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x5f,
+	0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x18, 0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x12, 0x2e,
+	0x4f, 0x72, 0x64, 0x65, 0x72, 0x45, 0x72, 0x72, 0x6f, 0x72, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67,
+	0x65, 0x52, 0x0c, 0x65, 0x72, 0x72, 0x6f, 0x72, 0x4d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x22,
+	0x3c, 0x0a, 0x0f, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65,
+	0x73, 0x74, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02,
+	0x69, 0x64, 0x12, 0x19, 0x0a, 0x08, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x5f, 0x69, 0x64, 0x18, 0x02,
+	0x20, 0x01, 0x28, 0x09, 0x52, 0x07, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x49, 0x64, 0x22, 0x54, 0x0a,
+	0x10, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x64, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x69,
+	0x64, 0x12, 0x30, 0x0a, 0x0a, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x5f, 0x64, 0x61, 0x74, 0x61, 0x18,
+	0x02, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x11, 0x2e, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x73, 0x2e, 0x4f,
+	0x72, 0x64, 0x65, 0x72, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x09, 0x6f, 0x72, 0x64, 0x65, 0x72, 0x44,
+	0x61, 0x74, 0x61, 0x22, 0x23, 0x0a, 0x11, 0x4d, 0x61, 0x74, 0x63, 0x68, 0x4f, 0x72, 0x64, 0x65,
+	0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x0e, 0x0a, 0x02, 0x69, 0x64, 0x18, 0x01,
+	0x20, 0x01, 0x28, 0x09, 0x52, 0x02, 0x69, 0x64, 0x42, 0x09, 0x5a, 0x07, 0x2f, 0x6f, 0x72, 0x64,
+	0x65, 0x72, 0x73, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -597,37 +717,40 @@ func file_common_proto_rawDescGZIP() []byte {
 	return file_common_proto_rawDescData
 }
 
-var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_common_proto_goTypes = []interface{}{
 	(*CreateOrderRequest)(nil),    // 0: orders.CreateOrderRequest
 	(*CreateOrderResponse)(nil),   // 1: orders.CreateOrderResponse
 	(*OrderInfo)(nil),             // 2: orders.OrderInfo
-	(*GetOrderRequest)(nil),       // 3: orders.GetOrderRequest
-	(*GetOrderResponse)(nil),      // 4: orders.GetOrderResponse
-	(*MatchOrderRequest)(nil),     // 5: orders.MatchOrderRequest
-	(Direction)(0),                // 6: orders.Direction
-	(OrderType)(0),                // 7: orders.OrderType
-	(*OrderErrorMessage)(nil),     // 8: OrderErrorMessage
-	(OrderState)(0),               // 9: orders.OrderState
-	(*timestamppb.Timestamp)(nil), // 10: google.protobuf.Timestamp
+	(*DeleteOrderRequest)(nil),    // 3: orders.DeleteOrderRequest
+	(*DeleteOrderResponse)(nil),   // 4: orders.DeleteOrderResponse
+	(*GetOrderRequest)(nil),       // 5: orders.GetOrderRequest
+	(*GetOrderResponse)(nil),      // 6: orders.GetOrderResponse
+	(*MatchOrderRequest)(nil),     // 7: orders.MatchOrderRequest
+	(Direction)(0),                // 8: orders.Direction
+	(OrderType)(0),                // 9: orders.OrderType
+	(*OrderErrorMessage)(nil),     // 10: OrderErrorMessage
+	(OrderState)(0),               // 11: orders.OrderState
+	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
 }
 var file_common_proto_depIdxs = []int32{
-	6,  // 0: orders.CreateOrderRequest.direction:type_name -> orders.Direction
-	7,  // 1: orders.CreateOrderRequest.order_type:type_name -> orders.OrderType
-	8,  // 2: orders.CreateOrderResponse.error:type_name -> OrderErrorMessage
-	6,  // 3: orders.OrderInfo.direction:type_name -> orders.Direction
-	7,  // 4: orders.OrderInfo.order_type:type_name -> orders.OrderType
-	9,  // 5: orders.OrderInfo.order_state:type_name -> orders.OrderState
-	10, // 6: orders.OrderInfo.date:type_name -> google.protobuf.Timestamp
-	10, // 7: orders.OrderInfo.creation_date:type_name -> google.protobuf.Timestamp
-	10, // 8: orders.OrderInfo.updated_date:type_name -> google.protobuf.Timestamp
-	10, // 9: orders.OrderInfo.expiration_date:type_name -> google.protobuf.Timestamp
-	2,  // 10: orders.GetOrderResponse.order_data:type_name -> orders.OrderInfo
-	11, // [11:11] is the sub-list for method output_type
-	11, // [11:11] is the sub-list for method input_type
-	11, // [11:11] is the sub-list for extension type_name
-	11, // [11:11] is the sub-list for extension extendee
-	0,  // [0:11] is the sub-list for field type_name
+	8,  // 0: orders.CreateOrderRequest.direction:type_name -> orders.Direction
+	9,  // 1: orders.CreateOrderRequest.order_type:type_name -> orders.OrderType
+	10, // 2: orders.CreateOrderResponse.error:type_name -> OrderErrorMessage
+	8,  // 3: orders.OrderInfo.direction:type_name -> orders.Direction
+	9,  // 4: orders.OrderInfo.order_type:type_name -> orders.OrderType
+	11, // 5: orders.OrderInfo.order_state:type_name -> orders.OrderState
+	12, // 6: orders.OrderInfo.date:type_name -> google.protobuf.Timestamp
+	12, // 7: orders.OrderInfo.creation_date:type_name -> google.protobuf.Timestamp
+	12, // 8: orders.OrderInfo.updated_date:type_name -> google.protobuf.Timestamp
+	12, // 9: orders.OrderInfo.expiration_date:type_name -> google.protobuf.Timestamp
+	10, // 10: orders.DeleteOrderResponse.error_message:type_name -> OrderErrorMessage
+	2,  // 11: orders.GetOrderResponse.order_data:type_name -> orders.OrderInfo
+	12, // [12:12] is the sub-list for method output_type
+	12, // [12:12] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }
@@ -675,7 +798,7 @@ func file_common_proto_init() {
 			}
 		}
 		file_common_proto_msgTypes[3].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*GetOrderRequest); i {
+			switch v := v.(*DeleteOrderRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -687,7 +810,7 @@ func file_common_proto_init() {
 			}
 		}
 		file_common_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*GetOrderResponse); i {
+			switch v := v.(*DeleteOrderResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -699,6 +822,30 @@ func file_common_proto_init() {
 			}
 		}
 		file_common_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*GetOrderRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_common_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*GetOrderResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_common_proto_msgTypes[7].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*MatchOrderRequest); i {
 			case 0:
 				return &v.state
@@ -717,7 +864,7 @@ func file_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_common_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -22,6 +22,8 @@ type TicketHandler struct {
 	matchingService     *services.MatcherService
 	balanceService      services.BalanceService
 	orderCreationSender transportrabbit.AmqpSender
+	quoteSender         transportrabbit.AmqpSender
+	deleteOrderSender   transportrabbit.AmqpSender
 }
 
 func NewTicketHandler(
@@ -29,8 +31,8 @@ func NewTicketHandler(
 	orderService services.OrderService,
 	matchingService *services.MatcherService,
 	balanceService services.BalanceService,
-	ocs transportrabbit.AmqpSender) TicketHandler {
-	return TicketHandler{ticketStore: ticketStore, orderService: orderService, balanceService: balanceService, matchingService: matchingService, orderCreationSender: ocs}
+	ocs transportrabbit.AmqpSender, quoteSender transportrabbit.AmqpSender, delOrderSender transportrabbit.AmqpSender) TicketHandler {
+	return TicketHandler{ticketStore: ticketStore, orderService: orderService, balanceService: balanceService, matchingService: matchingService, orderCreationSender: ocs, quoteSender: quoteSender, deleteOrderSender: delOrderSender}
 }
 
 func (h *TicketHandler) Handle(ctx context.Context) {
@@ -118,6 +120,27 @@ func (h *TicketHandler) Handle(ctx context.Context) {
 					continue
 				}
 				go h.handleReCreateOrder(ctx, request, ticketId)
+			case tickets.OperationType_OPERATION_TYPE_ORDER_INFO:
+				request := &orders.OrderInfo{}
+				if err := proto.Unmarshal(ticketInfo.Data, request); err != nil {
+					logger.Errorln(err.Error())
+					continue
+				}
+				go h.quoteSender.SendMessage(ctx, request)
+			case tickets.OperationType_OPERATION_TYPE_DROP_ORDER:
+				request := &orders.DeleteOrderRequest{}
+				if err := proto.Unmarshal(ticketInfo.Data, request); err != nil {
+					logger.Errorln(err.Error())
+					continue
+				}
+				go h.orderService.DeleteOrder(ctx, request)
+			case tickets.OperationType_OPERATION_TYPE_DROP_ORDER_RESPONSE:
+				request := &orders.DeleteOrderResponse{}
+				if err := proto.Unmarshal(ticketInfo.Data, request); err != nil {
+					logger.Errorln(err.Error())
+					continue
+				}
+				go h.deleteOrderSender.SendMessage(ctx, request)
 			default:
 				logger.Warningln("Ticket operation ", ticketInfo.OperationType, " unsupported, skipping...")
 				continue
@@ -136,46 +159,71 @@ func (h *TicketHandler) Handle(ctx context.Context) {
 }
 
 func (h *TicketHandler) handleCreateOrder(ctx context.Context, request *orders.CreateOrderRequest, ticketId string) {
-	h.orderService.CreateOrder(ctx, request)
-	//h.ticketStore.DeleteTicket(ctx, ticketId)
+	if err := h.orderService.CreateOrder(ctx, request); err != nil {
+		logger.Errorln(err.Error())
+	}
+	h.ticketStore.DeleteTicket(ctx, ticketId)
 }
 
 func (h TicketHandler) handleCreateOrderResponse(ctx context.Context, response *orders.CreateOrderResponse, ticketId string) {
-	h.orderCreationSender.SendMessage(ctx, response)
-	//h.ticketStore.DeleteTicket(ctx, ticketId)
+	if err := h.orderCreationSender.SendMessage(ctx, response); err != nil {
+		logger.Errorln(err.Error())
+	}
+	h.ticketStore.DeleteTicket(ctx, ticketId)
 }
 
 func (h *TicketHandler) handleLockBalance(ctx context.Context, request *balances.LockBalanceRequest, ticketId string) {
-	h.balanceService.LockBalance(ctx, request)
-	//h.ticketStore.DeleteTicket(ctx, ticketId)
+	if err := h.balanceService.LockBalance(ctx, request); err != nil {
+		logger.Errorln(err.Error())
+	}
+	h.ticketStore.DeleteTicket(ctx, ticketId)
 }
 
 func (h *TicketHandler) handleApproveOrder(ctx context.Context, request *balances.LockBalanceResponse, ticketId string) {
-	h.orderService.ApproveOrder(ctx, request)
-	//h.ticketStore.DeleteTicket(ctx, ticketId)
+	if err := h.orderService.ApproveOrder(ctx, request); err != nil {
+		logger.Errorln(err.Error())
+	}
+	h.ticketStore.DeleteTicket(ctx, ticketId)
 }
 
 func (h *TicketHandler) handleMatchOrder(ctx context.Context, request *orders.MatchOrderRequest, ticketId string) {
-	h.matchingService.MatchOrderById(ctx, request.Id)
-	//h.ticketStore.DeleteTicket(ctx, ticketId)
+	if err := h.matchingService.MatchOrderById(ctx, request.Id); err != nil {
+		logger.Errorln(err.Error())
+	}
+	h.ticketStore.DeleteTicket(ctx, ticketId)
 }
 
 func (h *TicketHandler) handleCreateTransfer(ctx context.Context, request *balances.CreateTransferRequest, ticketId string) {
-	h.balanceService.CreateTransfer(ctx, request)
-	//h.ticketStore.DeleteTicket(ctx, ticketId)
+	if err := h.balanceService.CreateTransfer(ctx, request); err != nil {
+		logger.Errorln(err.Error())
+	}
+	h.ticketStore.DeleteTicket(ctx, ticketId)
 }
 
 func (h *TicketHandler) handleTransfer(ctx context.Context, request *balances.Transfer, ticketId string) {
-	h.matchingService.HandleTransfersResponse(ctx, request)
-	//h.ticketStore.DeleteTicket(ctx, ticketId)
+	if err := h.matchingService.HandleTransfersResponse(ctx, request); err != nil {
+		logger.Errorln(err.Error())
+	}
+	h.ticketStore.DeleteTicket(ctx, ticketId)
 }
 
 func (h *TicketHandler) handleUnlockBalance(ctx context.Context, request *balances.UnLockBalanceRequest, ticketId string) {
-	h.balanceService.UnLockBalance(ctx, request)
-	//h.ticketStore.DeleteTicket(ctx, ticketId)
+	if err := h.balanceService.UnLockBalance(ctx, request); err != nil {
+		logger.Errorln(err.Error())
+	}
+	h.ticketStore.DeleteTicket(ctx, ticketId)
 }
 
 func (h *TicketHandler) handleReCreateOrder(ctx context.Context, request *orders.OrderInfo, ticketId string) {
-	h.orderService.ReCreateOrder(ctx, util.ConvertProtoOrderToModel(request))
-	//h.ticketStore.DeleteTicket(ctx, ticketId)
+	if err := h.orderService.ReCreateOrder(ctx, util.ConvertProtoOrderToModel(request)); err != nil {
+		logger.Errorln(err.Error())
+	}
+	h.ticketStore.DeleteTicket(ctx, ticketId)
+}
+
+func (h *TicketHandler) handleOrderINfo(ctx context.Context, request *orders.OrderInfo, ticketId string) {
+	if err := h.quoteSender.SendMessage(ctx, request); err != nil {
+		logger.Errorln(err.Error())
+	}
+	h.ticketStore.DeleteTicket(ctx, ticketId)
 }

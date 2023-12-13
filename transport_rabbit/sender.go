@@ -15,16 +15,17 @@ type AmqpSender struct {
 	rk      string
 }
 
-func (s *AmqpSender) SendMessage(ctx context.Context, message protoreflect.ProtoMessage) {
+func (s *AmqpSender) SendMessage(ctx context.Context, message protoreflect.ProtoMessage) error {
 	body, err := proto.Marshal(message)
 	if err != nil {
 		logger.Errorln("Parsing message error, error: ", err.Error())
+		return err
 	}
 	err = s.channel.PublishWithContext(ctx, s.ex, s.rk, false, false, amqp091.Publishing{ContentType: "text/plain", Body: body})
 	if err != nil {
 		logger.Errorln("Message not publish. Reazon: ", err.Error())
-		return
+		return err
 	}
 	logger.Info("Message was succesfully published! ")
-
+	return nil
 }

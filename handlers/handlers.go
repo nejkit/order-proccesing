@@ -41,3 +41,9 @@ func (h *Handler) GetHandlerForTransfer() func(context.Context, *balances.Transf
 		h.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_TRANSFER, t)
 	}
 }
+
+func (h *Handler) GetHandlerForDeleteOrder() func(context.Context, *orders.DeleteOrderRequest) {
+	return func(ctx context.Context, dor *orders.DeleteOrderRequest) {
+		h.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_DROP_ORDER, dor)
+	}
+}

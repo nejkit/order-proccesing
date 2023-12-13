@@ -260,7 +260,7 @@ func (s *OrderManager) TryLockOrder(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if exists {
+	if !exists {
 		return errors.New("ResourceIsBlocked")
 	}
 	return nil

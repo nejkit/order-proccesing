@@ -20,6 +20,18 @@ func GetParserForLockBalanceResponse() func([]byte) (*balances.LockBalanceRespon
 	}
 }
 
+func GetParserForDeleteOrderRequest() func([]byte) (*orders.DeleteOrderRequest, error) {
+	return func(b []byte) (*orders.DeleteOrderRequest, error) {
+		var request orders.DeleteOrderRequest
+		err := proto.Unmarshal(b, &request)
+		if err != nil {
+			return nil, err
+		}
+		fmt.Println("Received response: ", request.String())
+		return &request, nil
+	}
+}
+
 func GetParserForCreateOrderRequest() func([]byte) (*orders.CreateOrderRequest, error) {
 	return func(b []byte) (*orders.CreateOrderRequest, error) {
 		var request orders.CreateOrderRequest

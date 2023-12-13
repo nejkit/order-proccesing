@@ -6,6 +6,7 @@ import (
 	"order-processing/external/orders"
 	"order-processing/external/tickets"
 	"order-processing/storage"
+	transportrabbit "order-processing/transport_rabbit"
 	"order-processing/util"
 	"time"
 
@@ -16,13 +17,14 @@ import (
 type OrderService struct {
 	orderStore  *storage.OrderManager
 	ticketStore storage.TicketStorage
+	oInfoSender transportrabbit.AmqpSender
 }
 
 func NewMarketOrderService(store *storage.OrderManager, ticketStore storage.TicketStorage) OrderService {
 	return OrderService{orderStore: store, ticketStore: ticketStore}
 }
 
-func (s *OrderService) CreateOrder(ctx context.Context, request *orders.CreateOrderRequest) (*string, error) {
+func (s *OrderService) CreateOrder(ctx context.Context, request *orders.CreateOrderRequest) error {
 	logger.Infoln("Received request: ", request.String())
 
 	oid := uuid.NewString()
@@ -41,15 +43,16 @@ func (s *OrderService) CreateOrder(ctx context.Context, request *orders.CreateOr
 
 	err := s.orderStore.InsertNewOrder(ctx, orderData)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	response := &orders.CreateOrderResponse{
 		Id:      request.Id,
 		OrderId: oid,
 	}
 	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_CREATE_ORDER_RESPONSE, response)
+	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_ORDER_INFO, util.ConvertOrderModelToProto(&orderData))
 	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_LOCK_BALANCE, util.GetLockBalanceRequest(request, oid))
-	return &oid, nil
+	return nil
 }
 
 func (s *OrderService) ApproveOrder(ctx context.Context, response *balances.LockBalanceResponse) error {
@@ -68,6 +71,7 @@ func (s *OrderService) ApproveOrder(ctx context.Context, response *balances.Lock
 	if err = s.orderStore.UpdateOrderData(ctx, *data); err != nil {
 		return err
 	}
+	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_ORDER_INFO, util.ConvertOrderModelToProto(data))
 
 	event := &orders.MatchOrderRequest{Id: data.Id}
 	s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_MATCH_ORDER, event)
@@ -103,4 +107,32 @@ func (s *OrderService) GetOrder(ctx context.Context, request *orders.GetOrderReq
 	data, err := s.orderStore.GetOrderById(ctx, request.GetOrderId())
 	return data, err
 
+}
+
+func (s *OrderService) DeleteOrder(ctx context.Context, request *orders.DeleteOrderRequest) error {
+	response := orders.DeleteOrderResponse{
+		Id: request.Id,
+	}
+	orderInfo, err := s.orderStore.GetOrderById(ctx, request.OrderId)
+	if err != nil {
+		response.ErrorMessage = &orders.OrderErrorMessage{ErorCode: orders.OrdersErrorCodes_ORDERS_ERROR_CODE_ORDER_NOT_FOUND, Message: "NotFound"}
+		go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_DROP_ORDER_RESPONSE, &response)
+		return err
+	}
+	if orderInfo.OrderState != int(orders.OrderState_ORDER_STATE_NEW) || orderInfo.OrderState != int(orders.OrderState_ORDER_STATE_IN_PROCESS) {
+		response.ErrorMessage = &orders.OrderErrorMessage{ErorCode: orders.OrdersErrorCodes_ORDERS_ERROR_CODE_ORDER_NOT_FOUND, Message: "InvalidState"}
+		go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_DROP_ORDER_RESPONSE, &response)
+		return err
+	}
+	if err = s.orderStore.TryLockOrder(ctx, request.OrderId); err != nil {
+		response.ErrorMessage = &orders.OrderErrorMessage{ErorCode: orders.OrdersErrorCodes_ORDERS_ERROR_CODE_ORDER_NOT_FOUND, Message: "InvalidState"}
+		go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_DROP_ORDER_RESPONSE, &response)
+		return err
+	}
+	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_UNLOCK_BALANCE, util.GetUnLockBalanceRequest(orderInfo))
+	orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_REJECT)
+	s.orderStore.UpdateOrderData(ctx, *orderInfo)
+	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_ORDER_INFO, util.ConvertOrderModelToProto(orderInfo))
+	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_DROP_ORDER_RESPONSE, &response)
+	return nil
 }

@@ -46,22 +46,11 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 		logger.Errorln(err.Error())
 		return err
 	}
+
 	for _, id := range listOrdersForMatching {
-		candidateMatchingInfo, err := s.store.GetOrderById(ctx, id)
-		if err != nil {
+		if err = s.tryMatchOrder(ctx, id, orderInfo); err != nil {
 			continue
 		}
-		availableAmountRootOrder := s.calculateAmountMatching(*orderInfo)
-		if lock := s.tryLockOrderInfo(ctx, *candidateMatchingInfo); lock == true {
-			continue
-		}
-		availableAmountCandidateOrder := s.calculateAmountMatching(*candidateMatchingInfo)
-		fillVolumeBid := util.Min(availableAmountRootOrder, availableAmountCandidateOrder)
-		transferId := s.matchOrders(ctx, fillVolumeBid, orderInfo, candidateMatchingInfo)
-		s.store.AddTransferData(ctx, transferId, orderInfo.Id, candidateMatchingInfo.Id)
-		s.store.DropLimitOrderToStockBook(ctx, *candidateMatchingInfo)
-		s.store.TryUnlockOrder(ctx, candidateMatchingInfo.Id)
-		go s.sendTransferRequest(ctx, transferId, *orderInfo, *candidateMatchingInfo)
 		return nil
 	}
 	if orderInfo.OrderType == int(orders.OrderType_ORDER_TYPE_MARKET) {
@@ -72,7 +61,7 @@ func (s *MatcherService) MatchOrderById(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *balances.Transfer) {
+func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *balances.Transfer) error {
 	switch transfer.GetState() {
 	case balances.TransferState_TRANSFER_STATE_NEW:
 		{
@@ -85,39 +74,14 @@ func (s *MatcherService) HandleTransfersResponse(ctx context.Context, transfer *
 		}
 	case balances.TransferState_TRANSFER_STATE_REJECT:
 		{
-			logger.Infoln("Receive transfer in state Reject. Id: ", transfer.GetId(), " Error: ", transfer.GetError().String())
-			orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
-
-			for _, order := range orderInfo {
-				if err := s.tryLockOrderInfo(ctx, order); err == true {
-					continue
-				}
-				s.rejectOrder(ctx, order)
-				s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_UNLOCK_BALANCE, util.GetUnLockBalanceRequest(&order))
-				s.store.TryUnlockOrder(ctx, order.Id)
-			}
-
+			s.catchRejectTransfer(ctx, transfer)
 		}
 	case balances.TransferState_TRANSFER_STATE_DONE:
 		{
-			logger.Infoln("Receive transfer in state Done. Id: ", transfer.GetId(), " Try complete matching...")
-			orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
-
-			for _, order := range orderInfo {
-				logger.Infoln("Complete order with id: ", order.Id)
-				if err := s.tryLockOrderInfo(ctx, order); err == true {
-					continue
-				}
-				if order.OrderState == int(orders.OrderState_ORDER_STATE_PART_FILL) {
-					go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_RECREATE_ORDER, util.ConvertOrderModelToProto(&order))
-				}
-				order.OrderState = int(orders.OrderState_ORDER_STATE_DONE)
-				s.store.UpdateOrderData(ctx, order)
-				s.store.TryUnlockOrder(ctx, order.Id)
-			}
-
+			s.catchDoneTransfer(ctx, transfer)
 		}
 	}
+	return nil
 }
 
 func buildMatchingInfo(price float64, buyVolume float64, transferId string, orderInfo *storage.OrderInfo) {
@@ -145,10 +109,12 @@ func (s *MatcherService) sendTransferRequest(ctx context.Context, transferId str
 }
 
 func (s *MatcherService) tryLockOrderInfo(ctx context.Context, orderInfo storage.OrderInfo) bool {
-	if err := s.store.TryLockOrder(ctx, orderInfo.Id); err == nil {
-		return true
+	logger.Infoln("Start attempt to block resource")
+	if err := s.store.TryLockOrder(ctx, orderInfo.Id); err != nil {
+		logger.Errorln(err.Error())
+		return false
 	}
-	return false
+	return true
 }
 
 func (s *MatcherService) matchOrders(ctx context.Context, fillVolumeBid float64, orderInfo *storage.OrderInfo, candidateMatchingInfo *storage.OrderInfo) string {
@@ -160,9 +126,11 @@ func (s *MatcherService) matchOrders(ctx context.Context, fillVolumeBid float64,
 	if err := s.store.UpdateOrderData(ctx, *orderInfo); err != nil {
 		logger.Infoln(err.Error())
 	}
+	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_ORDER_INFO, util.ConvertOrderModelToProto(orderInfo))
 	if err := s.store.UpdateOrderData(ctx, *candidateMatchingInfo); err != nil {
 		logger.Infoln(err.Error())
 	}
+	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_ORDER_INFO, util.ConvertOrderModelToProto(candidateMatchingInfo))
 	return transferId
 }
 
@@ -170,8 +138,72 @@ func (s *MatcherService) rejectOrder(ctx context.Context, orderInfo storage.Orde
 	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_UNLOCK_BALANCE, util.GetUnLockBalanceRequest(&orderInfo))
 	orderInfo.OrderState = int(orders.OrderState_ORDER_STATE_REJECT)
 	s.store.UpdateOrderData(ctx, orderInfo)
+	go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_ORDER_INFO, util.ConvertOrderModelToProto(&orderInfo))
 }
 
 func (s *MatcherService) calculateAmountMatching(orderInfo storage.OrderInfo) float64 {
 	return orderInfo.InitPrice * orderInfo.InitVolume
+}
+
+func (s *MatcherService) catchRejectTransfer(ctx context.Context, transfer *balances.Transfer) {
+	logger.Infoln("Receive transfer in state Reject. Id: ", transfer.GetId(), " Error: ", transfer.GetError().String())
+	orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
+
+	for _, order := range orderInfo {
+		if err := s.tryLockOrderInfo(ctx, order); err == false {
+			continue
+		}
+		order.FillPrice = 0
+		order.FillVolume = 0
+		s.rejectOrder(ctx, order)
+		s.store.TryUnlockOrder(ctx, order.Id)
+	}
+}
+
+func (s *MatcherService) catchDoneTransfer(ctx context.Context, transfer *balances.Transfer) {
+	logger.Infoln("Receive transfer in state Done. Id: ", transfer.GetId(), " Try complete matching...")
+	orderInfo, _ := s.store.GetOrdersByTransferId(ctx, transfer.GetId())
+
+	for _, order := range orderInfo {
+		logger.Infoln("Complete order with id: ", order.Id)
+		if err := s.tryLockOrderInfo(ctx, order); err == false {
+			continue
+		}
+		if order.OrderState == int(orders.OrderState_ORDER_STATE_PART_FILL) {
+			go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_RECREATE_ORDER, util.ConvertOrderModelToProto(&order))
+		}
+		if order.OrderState == int(orders.OrderState_ORDER_STATE_FILL) {
+			go s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_UNLOCK_BALANCE, util.GetUnLockBalanceRequest(&order))
+		}
+
+		order.OrderState = int(orders.OrderState_ORDER_STATE_DONE)
+		s.store.UpdateOrderData(ctx, order)
+		s.ticketStore.SaveTicketForOperation(ctx, tickets.OperationType_OPERATION_TYPE_ORDER_INFO, util.ConvertOrderModelToProto(&order))
+		s.store.TryUnlockOrder(ctx, order.Id)
+	}
+}
+
+func (s *MatcherService) tryMatchOrder(ctx context.Context, id string, rootOrder *storage.OrderInfo) error {
+	candidateMatchingInfo, err := s.store.GetOrderById(ctx, id)
+	if err != nil {
+		return err
+	}
+	if lock := s.tryLockOrderInfo(ctx, *candidateMatchingInfo); lock == false {
+		return errors.New(statics.ErrorResourceLocked)
+	}
+
+	if candidateMatchingInfo.ExpirationDate < uint64(time.Now().UTC().UnixMilli()) {
+		s.rejectOrder(ctx, *candidateMatchingInfo)
+		return errors.New("OrderExpired")
+	}
+	availableAmountRootOrder := s.calculateAmountMatching(*rootOrder)
+
+	availableAmountCandidateOrder := s.calculateAmountMatching(*candidateMatchingInfo)
+	fillVolumeBid := util.Min(availableAmountRootOrder, availableAmountCandidateOrder)
+	transferId := s.matchOrders(ctx, fillVolumeBid, rootOrder, candidateMatchingInfo)
+	s.store.AddTransferData(ctx, transferId, rootOrder.Id, candidateMatchingInfo.Id)
+	s.store.DropLimitOrderToStockBook(ctx, *candidateMatchingInfo)
+	s.store.TryUnlockOrder(ctx, candidateMatchingInfo.Id)
+	go s.sendTransferRequest(ctx, transferId, *rootOrder, *candidateMatchingInfo)
+	return nil
 }
